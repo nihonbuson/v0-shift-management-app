@@ -15,12 +15,14 @@ export interface Override {
   startTime: string // "HH:MM" - must be within the parent session's time range
   endTime: string // "HH:MM" - must be within the parent session's time range
   roleId: string // role to apply during this override period
+  note?: string // optional task detail / memo
 }
 
 export interface Assignment {
   sessionId: string
   staffId: string
   roleId: string // default role for the entire session
+  note?: string // optional task detail / memo for the default assignment
   overrides: Override[]
 }
 

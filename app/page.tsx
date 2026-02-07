@@ -145,6 +145,7 @@ export default function Page() {
               getAssignment={store.getAssignment}
               getAssignmentRoleId={store.getAssignmentRoleId}
               setAssignment={store.setAssignment}
+              setAssignmentNote={store.setAssignmentNote}
               addOverride={store.addOverride}
               updateOverride={store.updateOverride}
               removeOverride={store.removeOverride}

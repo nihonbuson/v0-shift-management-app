@@ -37,6 +37,7 @@ interface SessionEditorProps {
   getAssignment: (sessionId: string, staffId: string) => Assignment | null
   getAssignmentRoleId: (sessionId: string, staffId: string) => string
   setAssignment: (sessionId: string, staffId: string, roleId: string) => void
+  setAssignmentNote: (sessionId: string, staffId: string, note: string) => void
   addOverride: (sessionId: string, staffId: string, override: Omit<Override, 'id'>) => void
   updateOverride: (
     sessionId: string,
@@ -124,6 +125,12 @@ function OverrideRow({
           {role.name}
         </span>
       )}
+      <Input
+        value={override.note ?? ''}
+        onChange={(e) => onUpdate(override.id, { note: e.target.value })}
+        placeholder="作業内容..."
+        className="h-6 w-28 text-xs px-1.5"
+      />
       <Button
         variant="ghost"
         size="icon"
@@ -143,6 +150,7 @@ function StaffAssignmentCard({
   assignment,
   roles,
   onSetRole,
+  onSetNote,
   onAddOverride,
   onUpdateOverride,
   onRemoveOverride,
@@ -152,6 +160,7 @@ function StaffAssignmentCard({
   assignment: Assignment | null
   roles: Role[]
   onSetRole: (roleId: string) => void
+  onSetNote: (note: string) => void
   onAddOverride: (override: Omit<Override, 'id'>) => void
   onUpdateOverride: (
     overrideId: string,
@@ -223,16 +232,24 @@ function StaffAssignmentCard({
           </SelectContent>
         </Select>
         {currentRoleId && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 text-[10px] text-muted-foreground px-1.5"
-            onClick={handleAddOverride}
-            title="例外時間を追加"
-          >
-            <Plus className="h-3 w-3 mr-0.5" />
-            例外
-          </Button>
+          <>
+            <Input
+              value={assignment?.note ?? ''}
+              onChange={(e) => onSetNote(e.target.value)}
+              placeholder="作業内容..."
+              className="h-7 w-28 text-xs px-1.5"
+            />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 text-[10px] text-muted-foreground px-1.5"
+              onClick={handleAddOverride}
+              title="例外時間を追加"
+            >
+              <Plus className="h-3 w-3 mr-0.5" />
+              例外
+            </Button>
+          </>
         )}
       </div>
 
@@ -269,6 +286,7 @@ function DaySessionList({
   getAssignment,
   getAssignmentRoleId,
   setAssignment,
+  setAssignmentNote,
   addOverride,
   updateOverride,
   removeOverride,
@@ -524,6 +542,9 @@ function DaySessionList({
                             }
                             onRemoveOverride={(ovId) =>
                               removeOverride(session.id, s.id, ovId)
+                            }
+                            onSetNote={(note) =>
+                              setAssignmentNote(session.id, s.id, note)
                             }
                           />
                         )

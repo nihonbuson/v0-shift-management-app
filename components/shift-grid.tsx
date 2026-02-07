@@ -26,6 +26,7 @@ interface CellInfo {
   roleTextColor: string
   sessionTitle: string
   isOverride: boolean
+  note: string
 }
 
 interface MergedCell {
@@ -42,6 +43,7 @@ const EMPTY_CELL: CellInfo = {
   roleTextColor: '',
   sessionTitle: '',
   isOverride: false,
+  note: '',
 }
 
 function useGridData(
@@ -79,6 +81,7 @@ function useGridData(
                 roleTextColor: '',
                 sessionTitle: session.title,
                 isOverride: false,
+                note: '',
               }
             }
 
@@ -97,6 +100,7 @@ function useGridData(
                   roleTextColor: role?.textColor ?? '',
                   sessionTitle: session.title,
                   isOverride: true,
+                  note: ov.note ?? '',
                 }
               }
             }
@@ -113,6 +117,7 @@ function useGridData(
               roleTextColor: role?.textColor ?? '',
               sessionTitle: session.title,
               isOverride: false,
+              note: assignment.note ?? '',
             }
           }
         }
@@ -140,7 +145,8 @@ function useGridData(
           prev &&
           curr.sessionId === prev.sessionId &&
           curr.roleId === prev.roleId &&
-          curr.isOverride === prev.isOverride
+          curr.isOverride === prev.isOverride &&
+          curr.note === prev.note
 
         if (!sameGroup || row === timeSlots.length) {
           const spanLength = row - spanStart
@@ -267,16 +273,21 @@ function DayGridTable({
                         }
                       >
                         {hasRole && rowSpan >= 3 ? (
-                          <div className="flex flex-col items-center justify-center h-full leading-tight">
-                            <span className="font-semibold text-[10px]">
+                          <div className="flex flex-col items-center justify-center h-full leading-tight px-0.5 overflow-hidden">
+                            <span className="font-semibold text-[10px] truncate max-w-full">
                               {info.roleName}
                             </span>
-                            {rowSpan >= 6 && (
-                              <span className="text-[9px] opacity-80">
+                            {info.note && rowSpan >= 4 && (
+                              <span className="text-[9px] opacity-90 font-medium truncate max-w-full shift-grid-note">
+                                {info.note}
+                              </span>
+                            )}
+                            {!info.note && rowSpan >= 6 && (
+                              <span className="text-[9px] opacity-80 truncate max-w-full">
                                 {info.sessionTitle}
                               </span>
                             )}
-                            {info.isOverride && rowSpan >= 4 && (
+                            {info.isOverride && rowSpan >= 4 && !info.note && (
                               <span className="text-[8px] opacity-60 italic">
                                 {'(個別調整)'}
                               </span>

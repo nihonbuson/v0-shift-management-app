@@ -36,6 +36,16 @@ interface ParsedResult {
 const TIME_REGEX = /^\d{1,2}:\d{2}$/
 const DATE_REGEX = /(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/
 const JP_DATE_REGEX = /(\d{1,2})月(\d{1,2})日/
+const NOTE_REGEX = /^(.+?)[（(](.+?)[）)]$/
+
+/** Extract role name and optional note from cell value like "事務局対応(受付準備)" */
+function extractRoleAndNote(cell: string): { roleName: string; note: string } {
+  const match = cell.match(NOTE_REGEX)
+  if (match) {
+    return { roleName: match[1].trim(), note: match[2].trim() }
+  }
+  return { roleName: cell, note: '' }
+}
 
 function detectDateInRow(row: string[]): string | null {
   for (const cell of row) {
@@ -134,7 +144,7 @@ function parseCSV(csvText: string, currentRoles: Role[]): ParsedResult {
 
   // For tracking active cell runs in data mode
   let activePerStaff: (
-    | { roleName: string; startTime: string }
+    | { roleName: string; note: string; startTime: string }
     | null
   )[] = []
   let lastTime = ''
@@ -170,6 +180,7 @@ function parseCSV(csvText: string, currentRoles: Role[]): ParsedResult {
           sessionId: session.id,
           staffId: globalStaff[si].id,
           roleId: role.id,
+          note: a.note || undefined,
           overrides: [],
         })
       }
@@ -294,11 +305,12 @@ function parseCSV(csvText: string, currentRoles: Role[]): ParsedResult {
 
         // For each staff column, check if content changed
         for (let si = 0; si < globalStaffNames.length; si++) {
-          const cellValue = (row[si + staffStartCol] || '').trim()
+          const rawCellValue = (row[si + staffStartCol] || '').trim()
+          const { roleName: cellRoleName, note: cellNote } = extractRoleAndNote(rawCellValue)
           const prevActive = activePerStaff[si]
 
-          if (prevActive && prevActive.roleName !== cellValue) {
-            // Content changed - finish previous run
+          if (prevActive && (prevActive.roleName !== cellRoleName || (!rawCellValue && prevActive.roleName))) {
+            // Content changed or cell empty - finish previous run
             const a = prevActive
             let session = allSessions.find(
               (s) =>
@@ -323,46 +335,21 @@ function parseCSV(csvText: string, currentRoles: Role[]): ParsedResult {
                 sessionId: session.id,
                 staffId: globalStaff[si].id,
                 roleId: role.id,
+                note: a.note || undefined,
                 overrides: [],
               })
             }
             activePerStaff[si] = null
           }
 
-          if (cellValue && (!activePerStaff[si] || activePerStaff[si]?.roleName !== cellValue)) {
+          if (rawCellValue && (!activePerStaff[si] || activePerStaff[si]?.roleName !== cellRoleName)) {
             activePerStaff[si] = {
-              roleName: cellValue,
+              roleName: cellRoleName,
+              note: cellNote,
               startTime: timeCell,
             }
-          } else if (!cellValue && activePerStaff[si]) {
-            // Empty cell - close active
-            const a = activePerStaff[si]!
-            let session = allSessions.find(
-              (s) =>
-                s.dayId === currentDayId &&
-                s.startTime === a.startTime &&
-                s.endTime === timeCell
-            )
-            if (!session) {
-              session = {
-                id: generateId(),
-                dayId: currentDayId,
-                title: a.roleName || 'セッション',
-                startTime: a.startTime,
-                endTime: timeCell,
-              }
-              allSessions.push(session)
-              daySessionCount++
-            }
-            const role = getOrCreateRole(a.roleName)
-            if (role) {
-              allAssignments.push({
-                sessionId: session.id,
-                staffId: globalStaff[si].id,
-                roleId: role.id,
-                overrides: [],
-              })
-            }
+          } else if (!rawCellValue && activePerStaff[si]) {
+            // Empty cell - close active (already handled above if prevActive existed)
             activePerStaff[si] = null
           }
         }
@@ -698,7 +685,7 @@ export function CsvImporter({ currentRoles, onImport }: CsvImporterProps) {
             <ul className="list-disc list-inside flex flex-col gap-1 mt-1">
               <li>日付行（YYYY-MM-DD or MM月DD日）を検出して日程を分割</li>
               <li>スタッフ名行: 2列目以降にスタッフ名</li>
-              <li>データ行: 1列目にHH:MM形式の時刻、2列目以降に役割名</li>
+              <li>データ行: 1列目にHH:MM形式の��刻、2列目以降に役割名</li>
               <li>連続する同じ役割名を自動でセッション結合</li>
               <li>空セルは「未割当」として扱います</li>
             </ul>

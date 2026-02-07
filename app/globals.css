@@ -86,6 +86,12 @@
     border: 1px solid #333 !important;
   }
 
+  .shift-grid-note {
+    font-size: 7px !important;
+    line-height: 1.2 !important;
+    font-weight: 600 !important;
+  }
+
   .print-page-break {
     page-break-after: always;
     break-after: page;

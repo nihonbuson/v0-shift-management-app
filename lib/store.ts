@@ -231,6 +231,20 @@ export function useShiftStore() {
     [updateData]
   )
 
+  const setAssignmentNote = useCallback(
+    (sessionId: string, staffId: string, note: string) => {
+      updateData((prev) => ({
+        ...prev,
+        assignments: prev.assignments.map((a) =>
+          a.sessionId === sessionId && a.staffId === staffId
+            ? { ...a, note }
+            : a
+        ),
+      }))
+    },
+    [updateData]
+  )
+
   const getAssignment = useCallback(
     (sessionId: string, staffId: string): Assignment | null => {
       return (
@@ -370,6 +384,7 @@ export function useShiftStore() {
     updateSession,
     removeSession,
     setAssignment,
+    setAssignmentNote,
     getAssignment,
     getAssignmentRoleId,
     addOverride,

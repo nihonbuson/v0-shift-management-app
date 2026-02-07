@@ -149,6 +149,9 @@ export default function Page() {
               addOverride={store.addOverride}
               updateOverride={store.updateOverride}
               removeOverride={store.removeOverride}
+              addMilestone={store.addMilestone}
+              updateMilestone={store.updateMilestone}
+              removeMilestone={store.removeMilestone}
             />
           </TabsContent>
 

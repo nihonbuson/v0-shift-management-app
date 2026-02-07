@@ -92,6 +92,22 @@
     font-weight: 600 !important;
   }
 
+  .milestone-badge {
+    background: rgba(255, 255, 255, 0.85) !important;
+    color: #000 !important;
+    border: 1px solid #666 !important;
+    font-size: 6px !important;
+    padding: 0 2px !important;
+  }
+
+  .milestone-screen-text {
+    display: none !important;
+  }
+
+  .milestone-print-text {
+    display: inline !important;
+  }
+
   .print-page-break {
     page-break-after: always;
     break-after: page;

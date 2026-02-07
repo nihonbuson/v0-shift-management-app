@@ -117,6 +117,7 @@ function useGridData(
                 sessionTitle: session.title,
                 isOverride: false,
                 note: '',
+                milestones: sessionMilestoneMap.get(session.id)?.get(slot) ?? [],
               }
             }
 
@@ -136,6 +137,7 @@ function useGridData(
                   sessionTitle: session.title,
                   isOverride: true,
                   note: ov.note ?? '',
+                  milestones: sessionMilestoneMap.get(session.id)?.get(slot) ?? [],
                 }
               }
             }
@@ -153,6 +155,7 @@ function useGridData(
               sessionTitle: session.title,
               isOverride: false,
               note: assignment.note ?? '',
+              milestones: sessionMilestoneMap.get(session.id)?.get(slot) ?? [],
             }
           }
         }
@@ -216,6 +219,7 @@ function DayGridTable({
   staff,
   roles,
   timeSlots,
+  gridData,
   mergedGrid,
   gridStartTime,
   gridEndTime,
@@ -225,6 +229,7 @@ function DayGridTable({
   staff: StaffMember[]
   roles: Role[]
   timeSlots: string[]
+  gridData: CellInfo[][]
   mergedGrid: MergedCell[][]
   gridStartTime: string
   gridEndTime: string
@@ -286,11 +291,22 @@ function DayGridTable({
                     const { info, rowSpan } = cell
                     const hasRole = info.roleId && info.roleColor
 
+                    // Collect all milestones across the merged row span
+                    const spanMilestones: ResolvedMilestone[] = []
+                    for (let r = rowIdx; r < rowIdx + rowSpan && r < gridData.length; r++) {
+                      const cellData = gridData[r]?.[colIdx]
+                      if (cellData?.milestones) {
+                        for (const ms of cellData.milestones) {
+                          spanMilestones.push(ms)
+                        }
+                      }
+                    }
+
                     return (
                       <td
                         key={s.id}
                         rowSpan={rowSpan}
-                        className={`border border-border text-center ${
+                        className={`border border-border text-center relative ${
                           !hasRole && info.sessionId
                             ? 'bg-muted/30'
                             : !hasRole
@@ -329,6 +345,23 @@ function DayGridTable({
                             )}
                           </div>
                         ) : null}
+
+                        {/* Milestone indicators */}
+                        {spanMilestones.length > 0 && (
+                          <div className="absolute top-0 right-0 flex flex-col gap-px p-px milestone-indicators">
+                            {spanMilestones.map((ms, msIdx) => (
+                              <span
+                                key={ms.time + '-' + msIdx}
+                                className="inline-flex items-center gap-0.5 px-1 py-px rounded-sm text-[7px] font-bold leading-none bg-card/90 text-foreground shadow-sm border border-border/50 whitespace-nowrap cursor-default milestone-badge"
+                                title={ms.time + ' ' + ms.label}
+                              >
+                                <FileText className="h-2 w-2 shrink-0" />
+                                <span className="hidden milestone-print-text">{ms.time + ' ' + ms.label}</span>
+                                <span className="milestone-screen-text truncate max-w-[52px]">{ms.label}</span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </td>
                     )
                   })}
@@ -371,7 +404,7 @@ function SingleDayGrid({
     [gridStartTime, gridEndTime]
   )
 
-  const { mergedGrid } = useGridData(
+  const { gridData, mergedGrid } = useGridData(
     timeSlots,
     staff,
     daySessions,
@@ -387,6 +420,7 @@ function SingleDayGrid({
       staff={staff}
       roles={roles}
       timeSlots={timeSlots}
+      gridData={gridData}
       mergedGrid={mergedGrid}
       gridStartTime={gridStartTime}
       gridEndTime={gridEndTime}

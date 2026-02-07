@@ -343,6 +343,14 @@ export function useShiftStore() {
     [updateData]
   )
 
+  // Replace entire data (for project restore)
+  const replaceData = useCallback(
+    (newData: ShiftData) => {
+      updateData(() => migrateData(newData as unknown as Record<string, unknown>))
+    },
+    [updateData]
+  )
+
   // Reset data
   const resetData = useCallback(() => {
     updateData(() => DEFAULT_SHIFT_DATA)
@@ -369,6 +377,7 @@ export function useShiftStore() {
     removeOverride,
     setGridTimes,
     importData,
+    replaceData,
     resetData,
   }
 }

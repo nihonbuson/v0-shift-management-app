@@ -18,6 +18,7 @@ import { SettingsPanel } from '@/components/settings-panel'
 import { SessionEditor } from '@/components/session-editor'
 import { ShiftGrid } from '@/components/shift-grid'
 import { CsvImporter } from '@/components/csv-importer'
+import { ProjectIO } from '@/components/project-io'
 
 export default function Page() {
   const store = useShiftStore()
@@ -54,6 +55,8 @@ export default function Page() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <ProjectIO data={store.data} onReplace={store.replaceData} />
+            <div className="w-px h-5 bg-border" aria-hidden="true" />
             <Dialog open={resetOpen} onOpenChange={setResetOpen}>
               <DialogTrigger asChild>
                 <Button variant="ghost" size="sm" className="text-muted-foreground">

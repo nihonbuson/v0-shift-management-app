@@ -131,7 +131,11 @@ export default function Page() {
               onUpdateSession={store.updateSession}
               onRemoveSession={store.removeSession}
               getAssignment={store.getAssignment}
+              getAssignmentRoleId={store.getAssignmentRoleId}
               setAssignment={store.setAssignment}
+              addOverride={store.addOverride}
+              updateOverride={store.updateOverride}
+              removeOverride={store.removeOverride}
             />
           </TabsContent>
 

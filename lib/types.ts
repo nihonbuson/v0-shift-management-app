@@ -17,10 +17,18 @@ export interface Session {
   endTime: string // "HH:MM" format
 }
 
+export interface Override {
+  id: string
+  startTime: string // "HH:MM" - must be within the parent session's time range
+  endTime: string // "HH:MM" - must be within the parent session's time range
+  roleId: string // role to apply during this override period
+}
+
 export interface Assignment {
   sessionId: string
   staffId: string
-  roleId: string // empty string means unassigned
+  roleId: string // default role for the entire session (empty string means unassigned)
+  overrides: Override[] // time-specific overrides within this session
 }
 
 export interface ShiftData {
@@ -37,6 +45,8 @@ export const DEFAULT_ROLES: Role[] = [
   { id: 'role-2', name: 'サポート', color: '#3b82f6', textColor: '#ffffff' },
   { id: 'role-3', name: '撮影', color: '#22c55e', textColor: '#ffffff' },
   { id: 'role-4', name: '事務局対応', color: '#eab308', textColor: '#1a1a1a' },
+  { id: 'role-5', name: '昼食', color: '#f97316', textColor: '#ffffff' },
+  { id: 'role-6', name: '休憩', color: '#a855f7', textColor: '#ffffff' },
 ]
 
 export const DEFAULT_SHIFT_DATA: ShiftData = {

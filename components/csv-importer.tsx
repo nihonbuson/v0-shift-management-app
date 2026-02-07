@@ -143,6 +143,7 @@ function parseCSV(csvText: string, currentRoles: Role[]): ParsedResult {
         sessionId: session.id,
         staffId: staffMembers[staffIdx].id,
         roleId: role.id,
+        overrides: [],
       })
     }
 

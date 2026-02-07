@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import type { ShiftData, StaffMember, Role, Session, Assignment } from './types'
+import type { ShiftData, StaffMember, Role, Session, Assignment, Override } from './types'
 import { DEFAULT_SHIFT_DATA, generateId } from './types'
 
 const STORAGE_KEY = 'shift-manager-data'
@@ -127,24 +127,69 @@ export function useShiftStore() {
           a => !(a.sessionId === sessionId && a.staffId === staffId)
         )
       } else if (existing >= 0) {
-        // Update existing
+        // Update existing - preserve overrides
         newAssignments = prev.assignments.map((a, i) =>
           i === existing ? { ...a, roleId } : a
         )
       } else {
-        // Add new
-        newAssignments = [...prev.assignments, { sessionId, staffId, roleId }]
+        // Add new with empty overrides
+        newAssignments = [...prev.assignments, { sessionId, staffId, roleId, overrides: [] }]
       }
       return { ...prev, assignments: newAssignments }
     })
   }, [updateData])
 
-  const getAssignment = useCallback((sessionId: string, staffId: string): string => {
+  const getAssignment = useCallback((sessionId: string, staffId: string): Assignment | null => {
+    return data.assignments.find(
+      a => a.sessionId === sessionId && a.staffId === staffId
+    ) ?? null
+  }, [data.assignments])
+
+  const getAssignmentRoleId = useCallback((sessionId: string, staffId: string): string => {
     const found = data.assignments.find(
       a => a.sessionId === sessionId && a.staffId === staffId
     )
     return found?.roleId ?? ''
   }, [data.assignments])
+
+  // Override operations
+  const addOverride = useCallback((sessionId: string, staffId: string, override: Omit<Override, 'id'>) => {
+    updateData(prev => ({
+      ...prev,
+      assignments: prev.assignments.map(a =>
+        a.sessionId === sessionId && a.staffId === staffId
+          ? { ...a, overrides: [...(a.overrides || []), { ...override, id: generateId() }] }
+          : a
+      ),
+    }))
+  }, [updateData])
+
+  const updateOverride = useCallback((sessionId: string, staffId: string, overrideId: string, updates: Partial<Omit<Override, 'id'>>) => {
+    updateData(prev => ({
+      ...prev,
+      assignments: prev.assignments.map(a =>
+        a.sessionId === sessionId && a.staffId === staffId
+          ? {
+              ...a,
+              overrides: (a.overrides || []).map(o =>
+                o.id === overrideId ? { ...o, ...updates } : o
+              ),
+            }
+          : a
+      ),
+    }))
+  }, [updateData])
+
+  const removeOverride = useCallback((sessionId: string, staffId: string, overrideId: string) => {
+    updateData(prev => ({
+      ...prev,
+      assignments: prev.assignments.map(a =>
+        a.sessionId === sessionId && a.staffId === staffId
+          ? { ...a, overrides: (a.overrides || []).filter(o => o.id !== overrideId) }
+          : a
+      ),
+    }))
+  }, [updateData])
 
   // Grid time settings
   const setGridTimes = useCallback((startTime: string, endTime: string) => {
@@ -178,6 +223,10 @@ export function useShiftStore() {
     removeSession,
     setAssignment,
     getAssignment,
+    getAssignmentRoleId,
+    addOverride,
+    updateOverride,
+    removeOverride,
     setGridTimes,
     importData,
     resetData,

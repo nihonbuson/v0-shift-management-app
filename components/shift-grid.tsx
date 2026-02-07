@@ -3,7 +3,7 @@
 import { useMemo, useRef } from 'react'
 import { Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import type { StaffMember, Role, Session, Assignment } from '@/lib/types'
 import { timeToMinutes, generateTimeSlots } from '@/lib/types'
 
@@ -23,6 +23,7 @@ interface CellInfo {
   roleColor: string
   roleTextColor: string
   sessionTitle: string
+  isOverride: boolean
 }
 
 interface MergedCell {
@@ -38,6 +39,7 @@ const EMPTY_CELL: CellInfo = {
   roleColor: '',
   roleTextColor: '',
   sessionTitle: '',
+  isOverride: false,
 }
 
 export function ShiftGrid({
@@ -55,11 +57,14 @@ export function ShiftGrid({
   )
 
   // Precompute: for each time slot -> for each staff -> cell info
+  // Now with override priority logic
   const gridData = useMemo(() => {
     const roleMap = new Map(roles.map(r => [r.id, r]))
-    const assignMap = new Map<string, string>()
+
+    // Build assignment lookup: sessionId::staffId -> Assignment
+    const assignMap = new Map<string, Assignment>()
     for (const a of assignments) {
-      assignMap.set(`${a.sessionId}::${a.staffId}`, a.roleId)
+      assignMap.set(`${a.sessionId}::${a.staffId}`, a)
     }
 
     const sortedSessions = [...sessions].sort(
@@ -75,15 +80,50 @@ export function ShiftGrid({
           const start = timeToMinutes(session.startTime)
           const end = timeToMinutes(session.endTime)
           if (slotMin >= start && slotMin < end) {
-            const roleId = assignMap.get(`${session.id}::${s.id}`) || null
-            const role = roleId ? roleMap.get(roleId) : null
+            const assignment = assignMap.get(`${session.id}::${s.id}`)
+            if (!assignment) {
+              // In session but not assigned
+              return {
+                sessionId: session.id,
+                roleId: null,
+                roleName: '',
+                roleColor: '',
+                roleTextColor: '',
+                sessionTitle: session.title,
+                isOverride: false,
+              }
+            }
+
+            // Check if any override applies to this time slot
+            // Overrides take priority over the default role
+            const overrides = assignment.overrides || []
+            for (const ov of overrides) {
+              const ovStart = timeToMinutes(ov.startTime)
+              const ovEnd = timeToMinutes(ov.endTime)
+              if (slotMin >= ovStart && slotMin < ovEnd) {
+                const role = roleMap.get(ov.roleId)
+                return {
+                  sessionId: session.id,
+                  roleId: ov.roleId,
+                  roleName: role?.name ?? '',
+                  roleColor: role?.color ?? '',
+                  roleTextColor: role?.textColor ?? '',
+                  sessionTitle: session.title,
+                  isOverride: true,
+                }
+              }
+            }
+
+            // No override matches - use default role
+            const role = assignment.roleId ? roleMap.get(assignment.roleId) : null
             return {
               sessionId: session.id,
-              roleId,
+              roleId: assignment.roleId || null,
               roleName: role?.name ?? '',
               roleColor: role?.color ?? '',
               roleTextColor: role?.textColor ?? '',
               sessionTitle: session.title,
+              isOverride: false,
             }
           }
         }
@@ -107,14 +147,15 @@ export function ShiftGrid({
         const curr = row < timeSlots.length ? gridData[row]?.[col] : null
 
         // Check if current cell is same group as previous
+        // Must match session, role, AND override status for proper merging
         const sameGroup =
           curr &&
           prev &&
           curr.sessionId === prev.sessionId &&
-          curr.roleId === prev.roleId
+          curr.roleId === prev.roleId &&
+          curr.isOverride === prev.isOverride
 
         if (!sameGroup || row === timeSlots.length) {
-          // Close the span from spanStart to row-1 (or row if last)
           const spanEnd = row
           const spanLength = spanEnd - spanStart
           if (spanLength > 0 && gridData[spanStart]) {
@@ -165,7 +206,7 @@ export function ShiftGrid({
         <div className="flex items-center gap-3">
           {/* Legend */}
           <div className="flex items-center gap-2 flex-wrap">
-            {roles.map(r => (
+            {roles.map((r) => (
               <div key={r.id} className="flex items-center gap-1">
                 <span
                   className="inline-block w-3 h-3 rounded-sm"
@@ -187,9 +228,7 @@ export function ShiftGrid({
           <table className="shift-grid-table w-full border-collapse text-xs">
             <thead className="sticky top-0 z-10">
               <tr>
-                <th
-                  className="border border-border bg-secondary text-secondary-foreground px-2 py-1.5 text-left font-semibold sticky left-0 z-20 min-w-[60px]"
-                >
+                <th className="border border-border bg-secondary text-secondary-foreground px-2 py-1.5 text-left font-semibold sticky left-0 z-20 min-w-[60px]">
                   時刻
                 </th>
                 {staff.map((s) => (
@@ -215,8 +254,8 @@ export function ShiftGrid({
                         isHour
                           ? 'bg-secondary text-secondary-foreground font-semibold'
                           : isHalfHour
-                          ? 'bg-muted text-muted-foreground'
-                          : 'bg-card text-muted-foreground'
+                            ? 'bg-muted text-muted-foreground'
+                            : 'bg-card text-muted-foreground'
                       }`}
                       style={{ height: '18px', lineHeight: '18px' }}
                     >
@@ -237,8 +276,8 @@ export function ShiftGrid({
                             !hasRole && info.sessionId
                               ? 'bg-muted/30'
                               : !hasRole
-                              ? 'bg-card'
-                              : ''
+                                ? 'bg-card'
+                                : ''
                           }`}
                           style={
                             hasRole
@@ -255,6 +294,9 @@ export function ShiftGrid({
                               <span className="font-semibold text-[10px]">{info.roleName}</span>
                               {rowSpan >= 6 && (
                                 <span className="text-[9px] opacity-80">{info.sessionTitle}</span>
+                              )}
+                              {info.isOverride && rowSpan >= 4 && (
+                                <span className="text-[8px] opacity-60 italic">{'(個別調整)'}</span>
                               )}
                             </div>
                           ) : null}

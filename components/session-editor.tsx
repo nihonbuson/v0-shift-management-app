@@ -1,7 +1,17 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Trash2, Pencil, Check, X, Clock, ChevronDown, ChevronUp } from 'lucide-react'
+import {
+  Plus,
+  Trash2,
+  Pencil,
+  Check,
+  X,
+  Clock,
+  ChevronDown,
+  ChevronUp,
+  AlertTriangle,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -12,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import type { StaffMember, Role, Session } from '@/lib/types'
+import type { StaffMember, Role, Session, Assignment, Override } from '@/lib/types'
 import { timeToMinutes } from '@/lib/types'
 
 interface SessionEditorProps {
@@ -22,8 +32,223 @@ interface SessionEditorProps {
   onAddSession: (title: string, startTime: string, endTime: string) => void
   onUpdateSession: (id: string, updates: Partial<Session>) => void
   onRemoveSession: (id: string) => void
-  getAssignment: (sessionId: string, staffId: string) => string
+  getAssignment: (sessionId: string, staffId: string) => Assignment | null
+  getAssignmentRoleId: (sessionId: string, staffId: string) => string
   setAssignment: (sessionId: string, staffId: string, roleId: string) => void
+  addOverride: (sessionId: string, staffId: string, override: Omit<Override, 'id'>) => void
+  updateOverride: (sessionId: string, staffId: string, overrideId: string, updates: Partial<Omit<Override, 'id'>>) => void
+  removeOverride: (sessionId: string, staffId: string, overrideId: string) => void
+}
+
+function OverrideRow({
+  override,
+  session,
+  roles,
+  onUpdate,
+  onRemove,
+}: {
+  override: Override
+  session: Session
+  roles: Role[]
+  onUpdate: (overrideId: string, updates: Partial<Omit<Override, 'id'>>) => void
+  onRemove: (overrideId: string) => void
+}) {
+  const role = roles.find(r => r.id === override.roleId)
+  const startMin = timeToMinutes(override.startTime)
+  const endMin = timeToMinutes(override.endTime)
+  const sessionStartMin = timeToMinutes(session.startTime)
+  const sessionEndMin = timeToMinutes(session.endTime)
+
+  const isOutOfRange =
+    startMin < sessionStartMin ||
+    endMin > sessionEndMin ||
+    startMin >= endMin
+
+  return (
+    <div
+      className={`flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs ${
+        isOutOfRange ? 'border-destructive/50 bg-destructive/5' : 'border-border'
+      }`}
+    >
+      {isOutOfRange && (
+        <AlertTriangle className="h-3 w-3 text-destructive shrink-0" />
+      )}
+      <Input
+        type="time"
+        value={override.startTime}
+        onChange={(e) => onUpdate(override.id, { startTime: e.target.value })}
+        className="h-6 w-24 text-xs px-1"
+        min={session.startTime}
+        max={session.endTime}
+      />
+      <span className="text-muted-foreground">~</span>
+      <Input
+        type="time"
+        value={override.endTime}
+        onChange={(e) => onUpdate(override.id, { endTime: e.target.value })}
+        className="h-6 w-24 text-xs px-1"
+        min={session.startTime}
+        max={session.endTime}
+      />
+      <Select
+        value={override.roleId}
+        onValueChange={(val) => onUpdate(override.id, { roleId: val })}
+      >
+        <SelectTrigger className="h-6 w-24 text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {roles.map((r) => (
+            <SelectItem key={r.id} value={r.id}>
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="inline-block w-2 h-2 rounded-full shrink-0"
+                  style={{ backgroundColor: r.color }}
+                />
+                <span>{r.name}</span>
+              </div>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {role && (
+        <span
+          className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0"
+          style={{ backgroundColor: role.color, color: role.textColor }}
+        >
+          {role.name}
+        </span>
+      )}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-5 w-5 shrink-0 text-destructive hover:text-destructive"
+        onClick={() => onRemove(override.id)}
+      >
+        <X className="h-3 w-3" />
+      </Button>
+    </div>
+  )
+}
+
+function StaffAssignmentCard({
+  staffMember,
+  session,
+  assignment,
+  roles,
+  onSetRole,
+  onAddOverride,
+  onUpdateOverride,
+  onRemoveOverride,
+}: {
+  staffMember: StaffMember
+  session: Session
+  assignment: Assignment | null
+  roles: Role[]
+  onSetRole: (roleId: string) => void
+  onAddOverride: (override: Omit<Override, 'id'>) => void
+  onUpdateOverride: (overrideId: string, updates: Partial<Omit<Override, 'id'>>) => void
+  onRemoveOverride: (overrideId: string) => void
+}) {
+  const currentRoleId = assignment?.roleId ?? ''
+  const currentRole = roles.find(r => r.id === currentRoleId)
+  const overrides = assignment?.overrides ?? []
+  const hasOverrides = overrides.length > 0
+
+  const handleAddOverride = () => {
+    // Default to a reasonable time range within the session
+    const sessionStartMin = timeToMinutes(session.startTime)
+    const sessionEndMin = timeToMinutes(session.endTime)
+    const midMin = Math.floor((sessionStartMin + sessionEndMin) / 2)
+    // Snap to 5 minute intervals
+    const snappedMid = Math.round(midMin / 5) * 5
+
+    const h1 = Math.floor(snappedMid / 60)
+    const m1 = snappedMid % 60
+    const startStr = `${h1.toString().padStart(2, '0')}:${m1.toString().padStart(2, '0')}`
+
+    // Find lunch/break role or default to the first role
+    const lunchRole = roles.find(r => r.name === '昼食') || roles.find(r => r.name === '休憩') || roles[0]
+
+    onAddOverride({
+      startTime: startStr,
+      endTime: session.endTime,
+      roleId: lunchRole?.id ?? roles[0]?.id ?? '',
+    })
+  }
+
+  return (
+    <div
+      className="flex flex-col gap-2 rounded-md border px-3 py-2"
+      style={
+        currentRole
+          ? {
+              backgroundColor: currentRole.color + '12',
+              borderColor: currentRole.color + '30',
+            }
+          : {}
+      }
+    >
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium flex-1 truncate">{staffMember.name}</span>
+        <Select
+          value={currentRoleId || '_none'}
+          onValueChange={(val) => onSetRole(val === '_none' ? '' : val)}
+        >
+          <SelectTrigger className="w-28 h-7 text-xs">
+            <SelectValue placeholder="未割当" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="_none">
+              <span className="text-muted-foreground">未割当</span>
+            </SelectItem>
+            {roles.map((r) => (
+              <SelectItem key={r.id} value={r.id}>
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: r.color }}
+                  />
+                  <span>{r.name}</span>
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {currentRoleId && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 text-[10px] text-muted-foreground px-1.5"
+            onClick={handleAddOverride}
+            title="例外時間を追加"
+          >
+            <Plus className="h-3 w-3 mr-0.5" />
+            例外
+          </Button>
+        )}
+      </div>
+
+      {/* Overrides section */}
+      {hasOverrides && (
+        <div className="flex flex-col gap-1.5 pl-2 border-l-2 border-dashed border-muted-foreground/30 ml-1">
+          <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+            個別調整
+          </span>
+          {overrides.map((ov) => (
+            <OverrideRow
+              key={ov.id}
+              override={ov}
+              session={session}
+              roles={roles}
+              onUpdate={onUpdateOverride}
+              onRemove={onRemoveOverride}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function SessionEditor({
@@ -34,7 +259,11 @@ export function SessionEditor({
   onUpdateSession,
   onRemoveSession,
   getAssignment,
+  getAssignmentRoleId,
   setAssignment,
+  addOverride,
+  updateOverride,
+  removeOverride,
 }: SessionEditorProps) {
   const [newTitle, setNewTitle] = useState('')
   const [newStart, setNewStart] = useState('09:00')
@@ -91,7 +320,9 @@ export function SessionEditor({
         <CardContent>
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1.5 flex-1 min-w-[200px]">
-              <label htmlFor="session-title" className="text-sm font-medium text-muted-foreground">タイトル</label>
+              <label htmlFor="session-title" className="text-sm font-medium text-muted-foreground">
+                タイトル
+              </label>
               <Input
                 id="session-title"
                 placeholder="セッション名..."
@@ -101,7 +332,9 @@ export function SessionEditor({
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="session-start" className="text-sm font-medium text-muted-foreground">開始</label>
+              <label htmlFor="session-start" className="text-sm font-medium text-muted-foreground">
+                開始
+              </label>
               <Input
                 id="session-start"
                 type="time"
@@ -111,7 +344,9 @@ export function SessionEditor({
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="session-end" className="text-sm font-medium text-muted-foreground">終了</label>
+              <label htmlFor="session-end" className="text-sm font-medium text-muted-foreground">
+                終了
+              </label>
               <Input
                 id="session-end"
                 type="time"
@@ -141,6 +376,12 @@ export function SessionEditor({
             const isEditing = editingId === session.id
             const isExpanded = expandedSession === session.id
             const durationMin = timeToMinutes(session.endTime) - timeToMinutes(session.startTime)
+
+            // Count overrides across all staff for this session
+            const totalOverrides = staff.reduce((count, s) => {
+              const a = getAssignment(session.id, s.id)
+              return count + (a?.overrides?.length ?? 0)
+            }, 0)
 
             return (
               <Card key={session.id} className="overflow-hidden">
@@ -191,17 +432,13 @@ export function SessionEditor({
                         </div>
                         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                           <Clock className="h-3.5 w-3.5" />
-                          <span>
-                            {session.startTime + ' ~ ' + session.endTime}
-                          </span>
-                          <span className="text-xs">
-                            {'(' + durationMin + '分)'}
-                          </span>
+                          <span>{session.startTime + ' ~ ' + session.endTime}</span>
+                          <span className="text-xs">{'(' + durationMin + '分)'}</span>
                         </div>
                         {/* Assignment summary badges */}
                         <div className="flex items-center gap-1 ml-2">
-                          {staff.map(s => {
-                            const roleId = getAssignment(session.id, s.id)
+                          {staff.map((s) => {
+                            const roleId = getAssignmentRoleId(session.id, s.id)
                             const role = getRoleById(roleId)
                             if (!role) return null
                             return (
@@ -214,9 +451,21 @@ export function SessionEditor({
                             )
                           })}
                         </div>
+                        {/* Override count badge */}
+                        {totalOverrides > 0 && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-medium ml-1">
+                            <AlertTriangle className="h-2.5 w-2.5" />
+                            {totalOverrides + '件の個別調整'}
+                          </span>
+                        )}
                       </button>
                       <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleStartEdit(session)}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => handleStartEdit(session)}
+                        >
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
                         <Button
@@ -232,49 +481,29 @@ export function SessionEditor({
                   )}
                 </div>
 
-                {/* Assignment grid - expandable */}
+                {/* Assignment grid with overrides - expandable */}
                 {isExpanded && staff.length > 0 && (
                   <CardContent className="p-4">
-                    <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(180px, 1fr))` }}>
+                    <div
+                      className="grid gap-2"
+                      style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}
+                    >
                       {staff.map((s) => {
-                        const currentRoleId = getAssignment(session.id, s.id)
-                        const currentRole = getRoleById(currentRoleId)
-
+                        const assignment = getAssignment(session.id, s.id)
                         return (
-                          <div
+                          <StaffAssignmentCard
                             key={s.id}
-                            className="flex items-center gap-2 rounded-md border px-3 py-2"
-                            style={currentRole ? {
-                              backgroundColor: currentRole.color + '18',
-                              borderColor: currentRole.color + '40',
-                            } : {}}
-                          >
-                            <span className="text-sm font-medium flex-1 truncate">{s.name}</span>
-                            <Select
-                              value={currentRoleId || '_none'}
-                              onValueChange={(val) => setAssignment(session.id, s.id, val === '_none' ? '' : val)}
-                            >
-                              <SelectTrigger className="w-28 h-7 text-xs">
-                                <SelectValue placeholder="未割当" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="_none">
-                                  <span className="text-muted-foreground">未割当</span>
-                                </SelectItem>
-                                {roles.map((r) => (
-                                  <SelectItem key={r.id} value={r.id}>
-                                    <div className="flex items-center gap-1.5">
-                                      <span
-                                        className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
-                                        style={{ backgroundColor: r.color }}
-                                      />
-                                      <span>{r.name}</span>
-                                    </div>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
+                            staffMember={s}
+                            session={session}
+                            assignment={assignment}
+                            roles={roles}
+                            onSetRole={(roleId) => setAssignment(session.id, s.id, roleId)}
+                            onAddOverride={(ov) => addOverride(session.id, s.id, ov)}
+                            onUpdateOverride={(ovId, updates) =>
+                              updateOverride(session.id, s.id, ovId, updates)
+                            }
+                            onRemoveOverride={(ovId) => removeOverride(session.id, s.id, ovId)}
+                          />
                         )
                       })}
                     </div>

@@ -1,10 +1,11 @@
 'use client'
 
-import { useMemo, useRef } from 'react'
+import { useMemo } from 'react'
 import { Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import type { StaffMember, Role, Session, Assignment } from '@/lib/types'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import type { StaffMember, Role, Session, Assignment, DayConfig } from '@/lib/types'
 import { timeToMinutes, generateTimeSlots } from '@/lib/types'
 
 interface ShiftGridProps {
@@ -12,6 +13,7 @@ interface ShiftGridProps {
   roles: Role[]
   sessions: Session[]
   assignments: Assignment[]
+  days: DayConfig[]
   gridStartTime: string
   gridEndTime: string
 }
@@ -42,26 +44,15 @@ const EMPTY_CELL: CellInfo = {
   isOverride: false,
 }
 
-export function ShiftGrid({
-  staff,
-  roles,
-  sessions,
-  assignments,
-  gridStartTime,
-  gridEndTime,
-}: ShiftGridProps) {
-  const gridRef = useRef<HTMLDivElement>(null)
-  const timeSlots = useMemo(
-    () => generateTimeSlots(gridStartTime, gridEndTime, 5),
-    [gridStartTime, gridEndTime]
-  )
-
-  // Precompute: for each time slot -> for each staff -> cell info
-  // Now with override priority logic
+function useGridData(
+  timeSlots: string[],
+  staff: StaffMember[],
+  sessions: Session[],
+  assignments: Assignment[],
+  roles: Role[]
+) {
   const gridData = useMemo(() => {
-    const roleMap = new Map(roles.map(r => [r.id, r]))
-
-    // Build assignment lookup: sessionId::staffId -> Assignment
+    const roleMap = new Map(roles.map((r) => [r.id, r]))
     const assignMap = new Map<string, Assignment>()
     for (const a of assignments) {
       assignMap.set(`${a.sessionId}::${a.staffId}`, a)
@@ -71,18 +62,15 @@ export function ShiftGrid({
       (a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime)
     )
 
-    // For each time slot, for each staff, compute cell info
     const grid: CellInfo[][] = timeSlots.map((slot) => {
       const slotMin = timeToMinutes(slot)
       return staff.map((s) => {
-        // Find which session covers this slot
         for (const session of sortedSessions) {
           const start = timeToMinutes(session.startTime)
           const end = timeToMinutes(session.endTime)
           if (slotMin >= start && slotMin < end) {
             const assignment = assignMap.get(`${session.id}::${s.id}`)
             if (!assignment) {
-              // In session but not assigned
               return {
                 sessionId: session.id,
                 roleId: null,
@@ -94,8 +82,7 @@ export function ShiftGrid({
               }
             }
 
-            // Check if any override applies to this time slot
-            // Overrides take priority over the default role
+            // Check overrides first (highest priority)
             const overrides = assignment.overrides || []
             for (const ov of overrides) {
               const ovStart = timeToMinutes(ov.startTime)
@@ -114,8 +101,10 @@ export function ShiftGrid({
               }
             }
 
-            // No override matches - use default role
-            const role = assignment.roleId ? roleMap.get(assignment.roleId) : null
+            // Default role
+            const role = assignment.roleId
+              ? roleMap.get(assignment.roleId)
+              : null
             return {
               sessionId: session.id,
               roleId: assignment.roleId || null,
@@ -134,7 +123,7 @@ export function ShiftGrid({
     return grid
   }, [timeSlots, staff, sessions, assignments, roles])
 
-  // Compute merged cells with rowspan for each staff column
+  // Merge cells with rowspan
   const mergedGrid = useMemo(() => {
     const result: MergedCell[][] = timeSlots.map(() =>
       staff.map(() => ({ rowSpan: 1, info: EMPTY_CELL, isFirst: true }))
@@ -146,8 +135,6 @@ export function ShiftGrid({
         const prev = row > 0 ? gridData[row - 1]?.[col] : null
         const curr = row < timeSlots.length ? gridData[row]?.[col] : null
 
-        // Check if current cell is same group as previous
-        // Must match session, role, AND override status for proper merging
         const sameGroup =
           curr &&
           prev &&
@@ -156,15 +143,14 @@ export function ShiftGrid({
           curr.isOverride === prev.isOverride
 
         if (!sameGroup || row === timeSlots.length) {
-          const spanEnd = row
-          const spanLength = spanEnd - spanStart
+          const spanLength = row - spanStart
           if (spanLength > 0 && gridData[spanStart]) {
             result[spanStart][col] = {
               rowSpan: spanLength,
               info: gridData[spanStart][col],
               isFirst: true,
             }
-            for (let r = spanStart + 1; r < spanEnd; r++) {
+            for (let r = spanStart + 1; r < row; r++) {
               result[r][col] = {
                 rowSpan: 0,
                 info: gridData[r][col],
@@ -180,6 +166,199 @@ export function ShiftGrid({
     return result
   }, [timeSlots, staff, gridData])
 
+  return { gridData, mergedGrid }
+}
+
+/* ─── Single day grid table ─── */
+function DayGridTable({
+  dayLabel,
+  staff,
+  roles,
+  timeSlots,
+  mergedGrid,
+  gridStartTime,
+  gridEndTime,
+  isLast,
+}: {
+  dayLabel: string
+  staff: StaffMember[]
+  roles: Role[]
+  timeSlots: string[]
+  mergedGrid: MergedCell[][]
+  gridStartTime: string
+  gridEndTime: string
+  isLast: boolean
+}) {
+  return (
+    <div
+      className={`shift-grid-day ${!isLast ? 'print-page-break' : ''}`}
+    >
+      {/* Print header */}
+      <div className="hidden print-only mb-2">
+        <h2 className="text-sm font-bold text-foreground">{dayLabel}</h2>
+        <p className="text-xs text-muted-foreground">
+          {gridStartTime + ' ~ ' + gridEndTime + ' / 5分刻み'}
+        </p>
+      </div>
+
+      <div className="shift-grid-container overflow-auto max-h-[70vh]">
+        <table className="shift-grid-table w-full border-collapse text-xs">
+          <thead className="sticky top-0 z-10">
+            <tr>
+              <th className="border border-border bg-secondary text-secondary-foreground px-2 py-1.5 text-left font-semibold sticky left-0 z-20 min-w-[56px]">
+                時刻
+              </th>
+              {staff.map((s) => (
+                <th
+                  key={s.id}
+                  className="border border-border bg-secondary text-secondary-foreground px-2 py-1.5 text-center font-semibold min-w-[72px]"
+                >
+                  {s.name}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {timeSlots.map((slot, rowIdx) => {
+              const minutes = timeToMinutes(slot)
+              const isHour = minutes % 60 === 0
+              const isHalfHour = minutes % 30 === 0
+
+              return (
+                <tr key={slot}>
+                  <td
+                    className={`border border-border px-1.5 py-0 text-right font-mono sticky left-0 z-[5] ${
+                      isHour
+                        ? 'bg-secondary text-secondary-foreground font-semibold'
+                        : isHalfHour
+                          ? 'bg-muted text-muted-foreground'
+                          : 'bg-card text-muted-foreground'
+                    }`}
+                    style={{ height: '16px', lineHeight: '16px' }}
+                  >
+                    {isHour || isHalfHour ? slot : ''}
+                  </td>
+                  {staff.map((s, colIdx) => {
+                    const cell = mergedGrid[rowIdx]?.[colIdx]
+                    if (!cell || !cell.isFirst) return null
+
+                    const { info, rowSpan } = cell
+                    const hasRole = info.roleId && info.roleColor
+
+                    return (
+                      <td
+                        key={s.id}
+                        rowSpan={rowSpan}
+                        className={`border border-border text-center ${
+                          !hasRole && info.sessionId
+                            ? 'bg-muted/30'
+                            : !hasRole
+                              ? 'bg-card'
+                              : ''
+                        }`}
+                        style={
+                          hasRole
+                            ? {
+                                backgroundColor: info.roleColor,
+                                color: info.roleTextColor,
+                                height: `${rowSpan * 16}px`,
+                              }
+                            : { height: `${rowSpan * 16}px` }
+                        }
+                      >
+                        {hasRole && rowSpan >= 3 ? (
+                          <div className="flex flex-col items-center justify-center h-full leading-tight">
+                            <span className="font-semibold text-[10px]">
+                              {info.roleName}
+                            </span>
+                            {rowSpan >= 6 && (
+                              <span className="text-[9px] opacity-80">
+                                {info.sessionTitle}
+                              </span>
+                            )}
+                            {info.isOverride && rowSpan >= 4 && (
+                              <span className="text-[8px] opacity-60 italic">
+                                {'(個別調整)'}
+                              </span>
+                            )}
+                          </div>
+                        ) : null}
+                      </td>
+                    )
+                  })}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+/* ─── Single day wrapper ─── */
+function SingleDayGrid({
+  day,
+  staff,
+  roles,
+  sessions,
+  assignments,
+  gridStartTime,
+  gridEndTime,
+  isLast,
+}: {
+  day: DayConfig
+  staff: StaffMember[]
+  roles: Role[]
+  sessions: Session[]
+  assignments: Assignment[]
+  gridStartTime: string
+  gridEndTime: string
+  isLast: boolean
+}) {
+  const daySessions = sessions.filter((s) => s.dayId === day.id)
+  const daySessionIds = new Set(daySessions.map((s) => s.id))
+  const dayAssignments = assignments.filter((a) => daySessionIds.has(a.sessionId))
+
+  const timeSlots = useMemo(
+    () => generateTimeSlots(gridStartTime, gridEndTime, 5),
+    [gridStartTime, gridEndTime]
+  )
+
+  const { mergedGrid } = useGridData(
+    timeSlots,
+    staff,
+    daySessions,
+    dayAssignments,
+    roles
+  )
+
+  const dayLabel = day.label + (day.date ? ` (${day.date})` : '')
+
+  return (
+    <DayGridTable
+      dayLabel={dayLabel}
+      staff={staff}
+      roles={roles}
+      timeSlots={timeSlots}
+      mergedGrid={mergedGrid}
+      gridStartTime={gridStartTime}
+      gridEndTime={gridEndTime}
+      isLast={isLast}
+    />
+  )
+}
+
+/* ─── Main export ─── */
+export function ShiftGrid({
+  staff,
+  roles,
+  sessions,
+  assignments,
+  days,
+  gridStartTime,
+  gridEndTime,
+}: ShiftGridProps) {
   const handlePrint = () => {
     window.print()
   }
@@ -194,11 +373,13 @@ export function ShiftGrid({
     )
   }
 
+  const defaultTab = days[0]?.id?.toString() ?? '1'
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between no-print">
         <div>
-          <h3 className="font-semibold text-sm">シフト表プレビュー</h3>
+          <h3 className="font-semibold text-sm text-foreground">シフト表プレビュー</h3>
           <p className="text-xs text-muted-foreground">
             {gridStartTime + ' ~ ' + gridEndTime + ' / 5分刻み'}
           </p>
@@ -223,93 +404,62 @@ export function ShiftGrid({
         </div>
       </div>
 
-      <Card className="overflow-hidden">
-        <div ref={gridRef} className="shift-grid-container overflow-auto max-h-[75vh]">
-          <table className="shift-grid-table w-full border-collapse text-xs">
-            <thead className="sticky top-0 z-10">
-              <tr>
-                <th className="border border-border bg-secondary text-secondary-foreground px-2 py-1.5 text-left font-semibold sticky left-0 z-20 min-w-[60px]">
-                  時刻
-                </th>
-                {staff.map((s) => (
-                  <th
-                    key={s.id}
-                    className="border border-border bg-secondary text-secondary-foreground px-2 py-1.5 text-center font-semibold min-w-[80px]"
-                  >
-                    {s.name}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {timeSlots.map((slot, rowIdx) => {
-                const minutes = timeToMinutes(slot)
-                const isHour = minutes % 60 === 0
-                const isHalfHour = minutes % 30 === 0
-
-                return (
-                  <tr key={slot}>
-                    <td
-                      className={`border border-border px-2 py-0 text-right font-mono sticky left-0 z-[5] ${
-                        isHour
-                          ? 'bg-secondary text-secondary-foreground font-semibold'
-                          : isHalfHour
-                            ? 'bg-muted text-muted-foreground'
-                            : 'bg-card text-muted-foreground'
-                      }`}
-                      style={{ height: '18px', lineHeight: '18px' }}
-                    >
-                      {isHour || isHalfHour ? slot : ''}
-                    </td>
-                    {staff.map((s, colIdx) => {
-                      const cell = mergedGrid[rowIdx]?.[colIdx]
-                      if (!cell || !cell.isFirst) return null
-
-                      const { info, rowSpan } = cell
-                      const hasRole = info.roleId && info.roleColor
-
-                      return (
-                        <td
-                          key={s.id}
-                          rowSpan={rowSpan}
-                          className={`border border-border text-center ${
-                            !hasRole && info.sessionId
-                              ? 'bg-muted/30'
-                              : !hasRole
-                                ? 'bg-card'
-                                : ''
-                          }`}
-                          style={
-                            hasRole
-                              ? {
-                                  backgroundColor: info.roleColor,
-                                  color: info.roleTextColor,
-                                  height: `${rowSpan * 18}px`,
-                                }
-                              : { height: `${rowSpan * 18}px` }
-                          }
-                        >
-                          {hasRole && rowSpan >= 3 ? (
-                            <div className="flex flex-col items-center justify-center h-full leading-tight">
-                              <span className="font-semibold text-[10px]">{info.roleName}</span>
-                              {rowSpan >= 6 && (
-                                <span className="text-[9px] opacity-80">{info.sessionTitle}</span>
-                              )}
-                              {info.isOverride && rowSpan >= 4 && (
-                                <span className="text-[8px] opacity-60 italic">{'(個別調整)'}</span>
-                              )}
-                            </div>
-                          ) : null}
-                        </td>
-                      )
-                    })}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+      {/* Tabs for day selection */}
+      <Tabs defaultValue={defaultTab}>
+        <div className="no-print">
+          <TabsList className="mb-2">
+            {days.map((d) => (
+              <TabsTrigger key={d.id} value={d.id.toString()}>
+                {d.label}
+                {d.date ? ` (${d.date})` : ''}
+              </TabsTrigger>
+            ))}
+            <TabsTrigger value="all">全日程</TabsTrigger>
+          </TabsList>
         </div>
-      </Card>
+
+        {days.map((d) => (
+          <TabsContent key={d.id} value={d.id.toString()}>
+            <Card className="overflow-hidden">
+              <SingleDayGrid
+                day={d}
+                staff={staff}
+                roles={roles}
+                sessions={sessions}
+                assignments={assignments}
+                gridStartTime={gridStartTime}
+                gridEndTime={gridEndTime}
+                isLast
+              />
+            </Card>
+          </TabsContent>
+        ))}
+
+        <TabsContent value="all">
+          <div className="flex flex-col gap-6">
+            {days.map((d, idx) => (
+              <div key={d.id}>
+                <h3 className="text-sm font-semibold mb-2 text-foreground">
+                  {d.label}
+                  {d.date ? ` (${d.date})` : ''}
+                </h3>
+                <Card className="overflow-hidden">
+                  <SingleDayGrid
+                    day={d}
+                    staff={staff}
+                    roles={roles}
+                    sessions={sessions}
+                    assignments={assignments}
+                    gridStartTime={gridStartTime}
+                    gridEndTime={gridEndTime}
+                    isLast={idx === days.length - 1}
+                  />
+                </Card>
+              </div>
+            ))}
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

@@ -25,11 +25,15 @@ export default function Page() {
 
   if (!store.isLoaded) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="text-sm text-muted-foreground">読み込み中...</div>
       </div>
     )
   }
+
+  const sessionCount = store.data.sessions.length
+  const staffCount = store.data.staff.length
+  const dayCount = store.data.days.length
 
   return (
     <div className="min-h-screen bg-background">
@@ -44,7 +48,9 @@ export default function Page() {
               <h1 className="text-base font-bold text-foreground leading-tight">
                 シフト管理
               </h1>
-              <p className="text-xs text-muted-foreground">Workshop Staff Manager</p>
+              <p className="text-xs text-muted-foreground">
+                {staffCount + '名 / ' + dayCount + '日間 / ' + sessionCount + 'セッション'}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -110,6 +116,7 @@ export default function Page() {
             <SettingsPanel
               staff={store.data.staff}
               roles={store.data.roles}
+              days={store.data.days}
               gridStartTime={store.data.gridStartTime}
               gridEndTime={store.data.gridEndTime}
               onAddStaff={store.addStaff}
@@ -118,6 +125,7 @@ export default function Page() {
               onAddRole={store.addRole}
               onUpdateRole={store.updateRole}
               onRemoveRole={store.removeRole}
+              onUpdateDay={store.updateDay}
               onSetGridTimes={store.setGridTimes}
             />
           </TabsContent>
@@ -127,6 +135,7 @@ export default function Page() {
               sessions={store.data.sessions}
               staff={store.data.staff}
               roles={store.data.roles}
+              days={store.data.days}
               onAddSession={store.addSession}
               onUpdateSession={store.updateSession}
               onRemoveSession={store.removeSession}
@@ -145,6 +154,7 @@ export default function Page() {
               roles={store.data.roles}
               sessions={store.data.sessions}
               assignments={store.data.assignments}
+              days={store.data.days}
               gridStartTime={store.data.gridStartTime}
               gridEndTime={store.data.gridEndTime}
             />

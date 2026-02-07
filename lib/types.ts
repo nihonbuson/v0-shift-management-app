@@ -10,13 +10,6 @@ export interface Role {
   textColor: string // hex color for text
 }
 
-export interface Session {
-  id: string
-  title: string
-  startTime: string // "HH:MM" format
-  endTime: string // "HH:MM" format
-}
-
 export interface Override {
   id: string
   startTime: string // "HH:MM" - must be within the parent session's time range
@@ -27,8 +20,22 @@ export interface Override {
 export interface Assignment {
   sessionId: string
   staffId: string
-  roleId: string // default role for the entire session (empty string means unassigned)
-  overrides: Override[] // time-specific overrides within this session
+  roleId: string // default role for the entire session
+  overrides: Override[]
+}
+
+export interface Session {
+  id: string
+  dayId: number // 1 or 2
+  title: string
+  startTime: string // "HH:MM"
+  endTime: string // "HH:MM"
+}
+
+export interface DayConfig {
+  id: number // 1 or 2
+  label: string // "Day 1", "Day 2", or custom
+  date?: string // optional date string for display
 }
 
 export interface ShiftData {
@@ -36,6 +43,7 @@ export interface ShiftData {
   roles: Role[]
   sessions: Session[]
   assignments: Assignment[]
+  days: DayConfig[]
   gridStartTime: string // "HH:MM"
   gridEndTime: string // "HH:MM"
 }
@@ -49,6 +57,11 @@ export const DEFAULT_ROLES: Role[] = [
   { id: 'role-6', name: '休憩', color: '#a855f7', textColor: '#ffffff' },
 ]
 
+export const DEFAULT_DAYS: DayConfig[] = [
+  { id: 1, label: 'Day 1' },
+  { id: 2, label: 'Day 2' },
+]
+
 export const DEFAULT_SHIFT_DATA: ShiftData = {
   staff: [
     { id: 'staff-1', name: '田中' },
@@ -58,12 +71,15 @@ export const DEFAULT_SHIFT_DATA: ShiftData = {
   ],
   roles: DEFAULT_ROLES,
   sessions: [
-    { id: 'session-1', title: '開会式', startTime: '09:00', endTime: '09:30' },
-    { id: 'session-2', title: 'セッションA', startTime: '09:30', endTime: '10:30' },
-    { id: 'session-3', title: '休憩', startTime: '10:30', endTime: '10:45' },
-    { id: 'session-4', title: 'セッションB', startTime: '10:45', endTime: '12:00' },
+    { id: 'session-1', dayId: 1, title: '開会式', startTime: '09:00', endTime: '09:30' },
+    { id: 'session-2', dayId: 1, title: 'セッションA', startTime: '09:30', endTime: '10:30' },
+    { id: 'session-3', dayId: 1, title: '休憩', startTime: '10:30', endTime: '10:45' },
+    { id: 'session-4', dayId: 1, title: 'セッションB', startTime: '10:45', endTime: '12:00' },
+    { id: 'session-5', dayId: 2, title: '振り返り', startTime: '09:00', endTime: '10:00' },
+    { id: 'session-6', dayId: 2, title: 'ワークショップC', startTime: '10:00', endTime: '12:00' },
   ],
   assignments: [],
+  days: DEFAULT_DAYS,
   gridStartTime: '08:00',
   gridEndTime: '18:00',
 }
@@ -83,7 +99,11 @@ export function minutesToTime(minutes: number): string {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`
 }
 
-export function generateTimeSlots(startTime: string, endTime: string, intervalMinutes: number = 5): string[] {
+export function generateTimeSlots(
+  startTime: string,
+  endTime: string,
+  intervalMinutes: number = 5
+): string[] {
   const start = timeToMinutes(startTime)
   const end = timeToMinutes(endTime)
   const slots: string[] = []

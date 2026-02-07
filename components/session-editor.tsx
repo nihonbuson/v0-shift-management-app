@@ -22,24 +22,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import type { StaffMember, Role, Session, Assignment, Override } from '@/lib/types'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import type { StaffMember, Role, Session, Assignment, Override, DayConfig } from '@/lib/types'
 import { timeToMinutes } from '@/lib/types'
 
 interface SessionEditorProps {
   sessions: Session[]
   staff: StaffMember[]
   roles: Role[]
-  onAddSession: (title: string, startTime: string, endTime: string) => void
+  days: DayConfig[]
+  onAddSession: (dayId: number, title: string, startTime: string, endTime: string) => void
   onUpdateSession: (id: string, updates: Partial<Session>) => void
   onRemoveSession: (id: string) => void
   getAssignment: (sessionId: string, staffId: string) => Assignment | null
   getAssignmentRoleId: (sessionId: string, staffId: string) => string
   setAssignment: (sessionId: string, staffId: string, roleId: string) => void
   addOverride: (sessionId: string, staffId: string, override: Omit<Override, 'id'>) => void
-  updateOverride: (sessionId: string, staffId: string, overrideId: string, updates: Partial<Omit<Override, 'id'>>) => void
+  updateOverride: (
+    sessionId: string,
+    staffId: string,
+    overrideId: string,
+    updates: Partial<Omit<Override, 'id'>>
+  ) => void
   removeOverride: (sessionId: string, staffId: string, overrideId: string) => void
 }
 
+/* ─── Override row ─── */
 function OverrideRow({
   override,
   session,
@@ -53,16 +61,13 @@ function OverrideRow({
   onUpdate: (overrideId: string, updates: Partial<Omit<Override, 'id'>>) => void
   onRemove: (overrideId: string) => void
 }) {
-  const role = roles.find(r => r.id === override.roleId)
+  const role = roles.find((r) => r.id === override.roleId)
   const startMin = timeToMinutes(override.startTime)
   const endMin = timeToMinutes(override.endTime)
   const sessionStartMin = timeToMinutes(session.startTime)
   const sessionEndMin = timeToMinutes(session.endTime)
-
   const isOutOfRange =
-    startMin < sessionStartMin ||
-    endMin > sessionEndMin ||
-    startMin >= endMin
+    startMin < sessionStartMin || endMin > sessionEndMin || startMin >= endMin
 
   return (
     <div
@@ -131,6 +136,7 @@ function OverrideRow({
   )
 }
 
+/* ─── Staff assignment card ─── */
 function StaffAssignmentCard({
   staffMember,
   session,
@@ -147,29 +153,28 @@ function StaffAssignmentCard({
   roles: Role[]
   onSetRole: (roleId: string) => void
   onAddOverride: (override: Omit<Override, 'id'>) => void
-  onUpdateOverride: (overrideId: string, updates: Partial<Omit<Override, 'id'>>) => void
+  onUpdateOverride: (
+    overrideId: string,
+    updates: Partial<Omit<Override, 'id'>>
+  ) => void
   onRemoveOverride: (overrideId: string) => void
 }) {
   const currentRoleId = assignment?.roleId ?? ''
-  const currentRole = roles.find(r => r.id === currentRoleId)
+  const currentRole = roles.find((r) => r.id === currentRoleId)
   const overrides = assignment?.overrides ?? []
   const hasOverrides = overrides.length > 0
 
   const handleAddOverride = () => {
-    // Default to a reasonable time range within the session
     const sessionStartMin = timeToMinutes(session.startTime)
     const sessionEndMin = timeToMinutes(session.endTime)
-    const midMin = Math.floor((sessionStartMin + sessionEndMin) / 2)
-    // Snap to 5 minute intervals
-    const snappedMid = Math.round(midMin / 5) * 5
-
-    const h1 = Math.floor(snappedMid / 60)
-    const m1 = snappedMid % 60
+    const midMin = Math.round((sessionStartMin + sessionEndMin) / 2 / 5) * 5
+    const h1 = Math.floor(midMin / 60)
+    const m1 = midMin % 60
     const startStr = `${h1.toString().padStart(2, '0')}:${m1.toString().padStart(2, '0')}`
-
-    // Find lunch/break role or default to the first role
-    const lunchRole = roles.find(r => r.name === '昼食') || roles.find(r => r.name === '休憩') || roles[0]
-
+    const lunchRole =
+      roles.find((r) => r.name === '昼食') ||
+      roles.find((r) => r.name === '休憩') ||
+      roles[0]
     onAddOverride({
       startTime: startStr,
       endTime: session.endTime,
@@ -190,7 +195,9 @@ function StaffAssignmentCard({
       }
     >
       <div className="flex items-center gap-2">
-        <span className="text-sm font-medium flex-1 truncate">{staffMember.name}</span>
+        <span className="text-sm font-medium flex-1 truncate">
+          {staffMember.name}
+        </span>
         <Select
           value={currentRoleId || '_none'}
           onValueChange={(val) => onSetRole(val === '_none' ? '' : val)}
@@ -229,7 +236,6 @@ function StaffAssignmentCard({
         )}
       </div>
 
-      {/* Overrides section */}
       {hasOverrides && (
         <div className="flex flex-col gap-1.5 pl-2 border-l-2 border-dashed border-muted-foreground/30 ml-1">
           <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
@@ -251,7 +257,9 @@ function StaffAssignmentCard({
   )
 }
 
-export function SessionEditor({
+/* ─── Session list for a single day ─── */
+function DaySessionList({
+  dayId,
   sessions,
   staff,
   roles,
@@ -264,7 +272,9 @@ export function SessionEditor({
   addOverride,
   updateOverride,
   removeOverride,
-}: SessionEditorProps) {
+}: {
+  dayId: number
+} & Omit<SessionEditorProps, 'days'>) {
   const [newTitle, setNewTitle] = useState('')
   const [newStart, setNewStart] = useState('09:00')
   const [newEnd, setNewEnd] = useState('10:00')
@@ -274,13 +284,13 @@ export function SessionEditor({
   const [editEnd, setEditEnd] = useState('')
   const [expandedSession, setExpandedSession] = useState<string | null>(null)
 
-  const sortedSessions = [...sessions].sort(
-    (a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime)
-  )
+  const daySessions = sessions
+    .filter((s) => s.dayId === dayId)
+    .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
 
   const handleAdd = () => {
     if (newTitle.trim()) {
-      onAddSession(newTitle.trim(), newStart, newEnd)
+      onAddSession(dayId, newTitle.trim(), newStart, newEnd)
       setNewTitle('')
     }
   }
@@ -307,24 +317,19 @@ export function SessionEditor({
     setExpandedSession(expandedSession === id ? null : id)
   }
 
-  const getRoleById = (roleId: string) => roles.find(r => r.id === roleId)
+  const getRoleById = (roleId: string) => roles.find((r) => r.id === roleId)
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       {/* Add Session Form */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">新しいセッションを追加</CardTitle>
-          <CardDescription>セッションのタイトルと時間帯を設定します</CardDescription>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="pt-4">
           <div className="flex flex-wrap items-end gap-3">
-            <div className="flex flex-col gap-1.5 flex-1 min-w-[200px]">
-              <label htmlFor="session-title" className="text-sm font-medium text-muted-foreground">
+            <div className="flex flex-col gap-1.5 flex-1 min-w-[180px]">
+              <label className="text-xs font-medium text-muted-foreground">
                 タイトル
               </label>
               <Input
-                id="session-title"
                 placeholder="セッション名..."
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
@@ -332,30 +337,28 @@ export function SessionEditor({
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="session-start" className="text-sm font-medium text-muted-foreground">
+              <label className="text-xs font-medium text-muted-foreground">
                 開始
               </label>
               <Input
-                id="session-start"
                 type="time"
                 value={newStart}
                 onChange={(e) => setNewStart(e.target.value)}
-                className="w-32"
+                className="w-28"
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="session-end" className="text-sm font-medium text-muted-foreground">
+              <label className="text-xs font-medium text-muted-foreground">
                 終了
               </label>
               <Input
-                id="session-end"
                 type="time"
                 value={newEnd}
                 onChange={(e) => setNewEnd(e.target.value)}
-                className="w-32"
+                className="w-28"
               />
             </div>
-            <Button onClick={handleAdd} disabled={!newTitle.trim()}>
+            <Button onClick={handleAdd} disabled={!newTitle.trim()} size="sm">
               <Plus className="h-4 w-4 mr-1" />
               追加
             </Button>
@@ -363,21 +366,19 @@ export function SessionEditor({
         </CardContent>
       </Card>
 
-      {/* Session List with Assignments */}
-      {sortedSessions.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground text-sm">
-            セッションが登録されていません。上のフォームからセッションを追加してください。
-          </CardContent>
-        </Card>
+      {/* Session List */}
+      {daySessions.length === 0 ? (
+        <div className="text-center py-8 text-sm text-muted-foreground">
+          セッションが登録されていません。
+        </div>
       ) : (
-        <div className="flex flex-col gap-3">
-          {sortedSessions.map((session) => {
+        <div className="flex flex-col gap-2">
+          {daySessions.map((session) => {
             const isEditing = editingId === session.id
             const isExpanded = expandedSession === session.id
-            const durationMin = timeToMinutes(session.endTime) - timeToMinutes(session.startTime)
+            const durationMin =
+              timeToMinutes(session.endTime) - timeToMinutes(session.startTime)
 
-            // Count overrides across all staff for this session
             const totalOverrides = staff.reduce((count, s) => {
               const a = getAssignment(session.id, s.id)
               return count + (a?.overrides?.length ?? 0)
@@ -385,7 +386,7 @@ export function SessionEditor({
 
             return (
               <Card key={session.id} className="overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-3 border-b bg-card">
+                <div className="flex items-center justify-between px-4 py-2.5 border-b bg-card">
                   {isEditing ? (
                     <div className="flex flex-wrap items-center gap-2 flex-1">
                       <Input
@@ -408,10 +409,20 @@ export function SessionEditor({
                         onChange={(e) => setEditEnd(e.target.value)}
                         className="h-8 w-28"
                       />
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleSaveEdit}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={handleSaveEdit}
+                      >
                         <Check className="h-3.5 w-3.5" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingId(null)}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => setEditingId(null)}
+                      >
                         <X className="h-3.5 w-3.5" />
                       </Button>
                     </div>
@@ -428,14 +439,18 @@ export function SessionEditor({
                           ) : (
                             <ChevronDown className="h-4 w-4 text-muted-foreground" />
                           )}
-                          <span className="font-medium text-sm">{session.title}</span>
+                          <span className="font-medium text-sm text-foreground">
+                            {session.title}
+                          </span>
                         </div>
                         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                           <Clock className="h-3.5 w-3.5" />
-                          <span>{session.startTime + ' ~ ' + session.endTime}</span>
-                          <span className="text-xs">{'(' + durationMin + '分)'}</span>
+                          <span>
+                            {session.startTime + ' ~ ' + session.endTime}
+                          </span>
+                          <span>{'(' + durationMin + '分)'}</span>
                         </div>
-                        {/* Assignment summary badges */}
+                        {/* Assignment badges */}
                         <div className="flex items-center gap-1 ml-2">
                           {staff.map((s) => {
                             const roleId = getAssignmentRoleId(session.id, s.id)
@@ -451,11 +466,10 @@ export function SessionEditor({
                             )
                           })}
                         </div>
-                        {/* Override count badge */}
                         {totalOverrides > 0 && (
                           <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-medium ml-1">
                             <AlertTriangle className="h-2.5 w-2.5" />
-                            {totalOverrides + '件の個別調整'}
+                            {totalOverrides + '件'}
                           </span>
                         )}
                       </button>
@@ -481,12 +495,14 @@ export function SessionEditor({
                   )}
                 </div>
 
-                {/* Assignment grid with overrides - expandable */}
                 {isExpanded && staff.length > 0 && (
-                  <CardContent className="p-4">
+                  <CardContent className="p-3">
                     <div
                       className="grid gap-2"
-                      style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}
+                      style={{
+                        gridTemplateColumns:
+                          'repeat(auto-fill, minmax(260px, 1fr))',
+                      }}
                     >
                       {staff.map((s) => {
                         const assignment = getAssignment(session.id, s.id)
@@ -497,21 +513,22 @@ export function SessionEditor({
                             session={session}
                             assignment={assignment}
                             roles={roles}
-                            onSetRole={(roleId) => setAssignment(session.id, s.id, roleId)}
-                            onAddOverride={(ov) => addOverride(session.id, s.id, ov)}
+                            onSetRole={(roleId) =>
+                              setAssignment(session.id, s.id, roleId)
+                            }
+                            onAddOverride={(ov) =>
+                              addOverride(session.id, s.id, ov)
+                            }
                             onUpdateOverride={(ovId, updates) =>
                               updateOverride(session.id, s.id, ovId, updates)
                             }
-                            onRemoveOverride={(ovId) => removeOverride(session.id, s.id, ovId)}
+                            onRemoveOverride={(ovId) =>
+                              removeOverride(session.id, s.id, ovId)
+                            }
                           />
                         )
                       })}
                     </div>
-                    {staff.length === 0 && (
-                      <p className="text-sm text-muted-foreground text-center py-4">
-                        スタッフを設定画面で追加してください
-                      </p>
-                    )}
                   </CardContent>
                 )}
               </Card>
@@ -519,6 +536,40 @@ export function SessionEditor({
           })}
         </div>
       )}
+    </div>
+  )
+}
+
+/* ─── Main export ─── */
+export function SessionEditor(props: SessionEditorProps) {
+  const { days } = props
+  const defaultDay = days[0]?.id?.toString() ?? '1'
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">セッション管理</CardTitle>
+          <CardDescription>
+            各日のセッションを管理し、スタッフのアサインと個別調整を行います
+          </CardDescription>
+        </CardHeader>
+      </Card>
+      <Tabs defaultValue={defaultDay}>
+        <TabsList className="mb-2">
+          {days.map((d) => (
+            <TabsTrigger key={d.id} value={d.id.toString()}>
+              {d.label}
+              {d.date ? ` (${d.date})` : ''}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {days.map((d) => (
+          <TabsContent key={d.id} value={d.id.toString()}>
+            <DaySessionList dayId={d.id} {...props} />
+          </TabsContent>
+        ))}
+      </Tabs>
     </div>
   )
 }

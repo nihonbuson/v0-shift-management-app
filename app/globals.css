@@ -85,4 +85,24 @@
     padding: 0 !important;
     border: 1px solid #333 !important;
   }
+
+  .print-page-break {
+    page-break-after: always;
+    break-after: page;
+    margin-bottom: 0;
+  }
+
+  .shift-grid-day {
+    page-break-inside: avoid;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  /* Remove card borders for cleaner print */
+  .shift-grid-day .overflow-hidden {
+    border: none !important;
+    box-shadow: none !important;
+  }
 }

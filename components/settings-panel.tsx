@@ -13,11 +13,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import type { StaffMember, Role } from '@/lib/types'
+import type { StaffMember, Role, DayConfig } from '@/lib/types'
 
 interface SettingsPanelProps {
   staff: StaffMember[]
   roles: Role[]
+  days: DayConfig[]
   gridStartTime: string
   gridEndTime: string
   onAddStaff: (name: string) => void
@@ -26,12 +27,14 @@ interface SettingsPanelProps {
   onAddRole: (name: string, color: string, textColor: string) => void
   onUpdateRole: (id: string, updates: Partial<Role>) => void
   onRemoveRole: (id: string) => void
+  onUpdateDay: (dayId: number, updates: Partial<DayConfig>) => void
   onSetGridTimes: (start: string, end: string) => void
 }
 
 export function SettingsPanel({
   staff,
   roles,
+  days,
   gridStartTime,
   gridEndTime,
   onAddStaff,
@@ -40,6 +43,7 @@ export function SettingsPanel({
   onAddRole,
   onUpdateRole,
   onRemoveRole,
+  onUpdateDay,
   onSetGridTimes,
 }: SettingsPanelProps) {
   const [newStaffName, setNewStaffName] = useState('')
@@ -135,6 +139,44 @@ export function SettingsPanel({
                 className="w-36"
               />
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Day Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">日程設定</CardTitle>
+          <CardDescription>各日のラベルと日付を設定します</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-4">
+            {days.map((d) => (
+              <div key={d.id} className="flex items-end gap-2">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-muted-foreground">
+                    {'Day ' + d.id + ' ラベル'}
+                  </label>
+                  <Input
+                    value={d.label}
+                    onChange={(e) => onUpdateDay(d.id, { label: e.target.value })}
+                    className="w-32"
+                    placeholder="Day 1"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-muted-foreground">
+                    日付（任意）
+                  </label>
+                  <Input
+                    value={d.date ?? ''}
+                    onChange={(e) => onUpdateDay(d.id, { date: e.target.value })}
+                    className="w-40"
+                    placeholder="2025-07-01"
+                  />
+                </div>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>

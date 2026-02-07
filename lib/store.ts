@@ -9,6 +9,7 @@ import type {
   Assignment,
   Override,
   DayConfig,
+  Milestone,
 } from './types'
 import { DEFAULT_SHIFT_DATA, generateId } from './types'
 
@@ -23,11 +24,12 @@ function migrateData(raw: Record<string, unknown>): ShiftData {
       { id: 2, label: 'Day 2' },
     ]
   }
-  // Ensure all sessions have dayId
+  // Ensure all sessions have dayId and milestones
   if (data.sessions) {
     data.sessions = data.sessions.map((s: Session) => ({
       ...s,
       dayId: s.dayId || 1,
+      milestones: s.milestones || [],
     }))
   }
   // Ensure all assignments have overrides
@@ -173,7 +175,7 @@ export function useShiftStore() {
         ...prev,
         sessions: [
           ...prev.sessions,
-          { id: generateId(), dayId, title, startTime, endTime },
+          { id: generateId(), dayId, title, startTime, endTime, milestones: [] },
         ],
       }))
     },
@@ -334,6 +336,63 @@ export function useShiftStore() {
     [updateData]
   )
 
+  // Milestone operations
+  const addMilestone = useCallback(
+    (sessionId: string, milestone: Omit<Milestone, 'id'>) => {
+      updateData((prev) => ({
+        ...prev,
+        sessions: prev.sessions.map((s) =>
+          s.id === sessionId
+            ? {
+                ...s,
+                milestones: [
+                  ...(s.milestones || []),
+                  { ...milestone, id: generateId() },
+                ],
+              }
+            : s
+        ),
+      }))
+    },
+    [updateData]
+  )
+
+  const updateMilestone = useCallback(
+    (sessionId: string, milestoneId: string, updates: Partial<Omit<Milestone, 'id'>>) => {
+      updateData((prev) => ({
+        ...prev,
+        sessions: prev.sessions.map((s) =>
+          s.id === sessionId
+            ? {
+                ...s,
+                milestones: (s.milestones || []).map((m) =>
+                  m.id === milestoneId ? { ...m, ...updates } : m
+                ),
+              }
+            : s
+        ),
+      }))
+    },
+    [updateData]
+  )
+
+  const removeMilestone = useCallback(
+    (sessionId: string, milestoneId: string) => {
+      updateData((prev) => ({
+        ...prev,
+        sessions: prev.sessions.map((s) =>
+          s.id === sessionId
+            ? {
+                ...s,
+                milestones: (s.milestones || []).filter((m) => m.id !== milestoneId),
+              }
+            : s
+        ),
+      }))
+    },
+    [updateData]
+  )
+
   // Grid time settings
   const setGridTimes = useCallback(
     (startTime: string, endTime: string) => {
@@ -390,6 +449,9 @@ export function useShiftStore() {
     addOverride,
     updateOverride,
     removeOverride,
+    addMilestone,
+    updateMilestone,
+    removeMilestone,
     setGridTimes,
     importData,
     replaceData,

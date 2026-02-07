@@ -1,12 +1,12 @@
 'use client'
 
 import { useMemo } from 'react'
-import { Printer } from 'lucide-react'
+import { Printer, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { StaffMember, Role, Session, Assignment, DayConfig } from '@/lib/types'
-import { timeToMinutes, generateTimeSlots } from '@/lib/types'
+import { timeToMinutes, minutesToTime, generateTimeSlots } from '@/lib/types'
 
 interface ShiftGridProps {
   staff: StaffMember[]
@@ -18,6 +18,12 @@ interface ShiftGridProps {
   gridEndTime: string
 }
 
+/** A resolved milestone with absolute time */
+interface ResolvedMilestone {
+  time: string // "HH:MM"
+  label: string
+}
+
 interface CellInfo {
   sessionId: string | null
   roleId: string | null
@@ -27,6 +33,7 @@ interface CellInfo {
   sessionTitle: string
   isOverride: boolean
   note: string
+  milestones: ResolvedMilestone[] // milestones that land on this 5-min slot
 }
 
 interface MergedCell {
@@ -44,6 +51,7 @@ const EMPTY_CELL: CellInfo = {
   sessionTitle: '',
   isOverride: false,
   note: '',
+  milestones: [],
 }
 
 function useGridData(
@@ -58,6 +66,33 @@ function useGridData(
     const assignMap = new Map<string, Assignment>()
     for (const a of assignments) {
       assignMap.set(`${a.sessionId}::${a.staffId}`, a)
+    }
+
+    // Pre-compute milestone absolute times per session, keyed by slot time
+    const sessionMilestoneMap = new Map<string, Map<string, ResolvedMilestone[]>>()
+    for (const session of sessions) {
+      const milestones = session.milestones || []
+      if (milestones.length === 0) continue
+      const slotMap = new Map<string, ResolvedMilestone[]>()
+      const baseMin = timeToMinutes(session.startTime)
+      for (const ms of milestones) {
+        if (!ms.label) continue
+        const absMin = baseMin + ms.offsetMinutes
+        // Snap to 5-min slot
+        const snapped = Math.floor(absMin / 5) * 5
+        const slotKey = minutesToTime(snapped)
+        const resolved: ResolvedMilestone = {
+          time: minutesToTime(absMin),
+          label: ms.label,
+        }
+        const existing = slotMap.get(slotKey)
+        if (existing) {
+          existing.push(resolved)
+        } else {
+          slotMap.set(slotKey, [resolved])
+        }
+      }
+      sessionMilestoneMap.set(session.id, slotMap)
     }
 
     const sortedSessions = [...sessions].sort(

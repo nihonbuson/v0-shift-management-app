@@ -23,8 +23,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import type { StaffMember, Role, Session, Assignment, Override, DayConfig } from '@/lib/types'
-import { timeToMinutes } from '@/lib/types'
+import type { StaffMember, Role, Session, Assignment, Override, DayConfig, Milestone } from '@/lib/types'
+import { timeToMinutes, minutesToTime } from '@/lib/types'
 
 interface SessionEditorProps {
   sessions: Session[]
@@ -46,6 +46,9 @@ interface SessionEditorProps {
     updates: Partial<Omit<Override, 'id'>>
   ) => void
   removeOverride: (sessionId: string, staffId: string, overrideId: string) => void
+  addMilestone: (sessionId: string, milestone: Omit<Milestone, 'id'>) => void
+  updateMilestone: (sessionId: string, milestoneId: string, updates: Partial<Omit<Milestone, 'id'>>) => void
+  removeMilestone: (sessionId: string, milestoneId: string) => void
 }
 
 /* ─── Override row ─── */
@@ -274,6 +277,107 @@ function StaffAssignmentCard({
   )
 }
 
+/* ─── Milestones section ─── */
+function MilestoneSection({
+  session,
+  onAdd,
+  onUpdate,
+  onRemove,
+}: {
+  session: Session
+  onAdd: (milestone: Omit<Milestone, 'id'>) => void
+  onUpdate: (milestoneId: string, updates: Partial<Omit<Milestone, 'id'>>) => void
+  onRemove: (milestoneId: string) => void
+}) {
+  const milestones = session.milestones || []
+  const durationMin = timeToMinutes(session.endTime) - timeToMinutes(session.startTime)
+
+  const handleAdd = () => {
+    onAdd({ offsetMinutes: 0, label: '' })
+  }
+
+  // Build 5-min offset options for the dropdown
+  const offsetOptions: number[] = []
+  for (let m = 0; m <= durationMin; m += 5) {
+    offsetOptions.push(m)
+  }
+
+  const formatAbsoluteTime = (offset: number) => {
+    const baseMin = timeToMinutes(session.startTime)
+    return minutesToTime(baseMin + offset)
+  }
+
+  return (
+    <div className="flex flex-col gap-2 border-t pt-3 mt-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+          <Clock className="h-3 w-3" />
+          マイルストーン（配布タイミング）
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-6 text-[10px] px-2 bg-transparent"
+          onClick={handleAdd}
+        >
+          <Plus className="h-3 w-3 mr-0.5" />
+          追加
+        </Button>
+      </div>
+
+      {milestones.length === 0 ? (
+        <p className="text-[11px] text-muted-foreground">
+          配布物やアクションのタイミングを追加できます。
+        </p>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {milestones.map((ms) => (
+            <div
+              key={ms.id}
+              className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5 bg-card"
+            >
+              <Select
+                value={ms.offsetMinutes.toString()}
+                onValueChange={(val) =>
+                  onUpdate(ms.id, { offsetMinutes: Number(val) })
+                }
+              >
+                <SelectTrigger className="h-6 w-[110px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {offsetOptions.map((offset) => (
+                    <SelectItem key={offset} value={offset.toString()}>
+                      {'+' + offset + '分 (' + formatAbsoluteTime(offset) + ')'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input
+                value={ms.label}
+                onChange={(e) => onUpdate(ms.id, { label: e.target.value })}
+                placeholder="ワークシートA配布..."
+                className="h-6 flex-1 text-xs px-1.5"
+              />
+              <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                {formatAbsoluteTime(ms.offsetMinutes)}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 shrink-0 text-destructive hover:text-destructive"
+                onClick={() => onRemove(ms.id)}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ─── Session list for a single day ─── */
 function DaySessionList({
   dayId,
@@ -290,6 +394,9 @@ function DaySessionList({
   addOverride,
   updateOverride,
   removeOverride,
+  addMilestone,
+  updateMilestone,
+  removeMilestone,
 }: {
   dayId: number
 } & Omit<SessionEditorProps, 'days'>) {
@@ -490,6 +597,12 @@ function DaySessionList({
                             {totalOverrides + '件'}
                           </span>
                         )}
+                        {(session.milestones?.length ?? 0) > 0 && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-accent text-accent-foreground text-[10px] font-medium ml-1">
+                            <Clock className="h-2.5 w-2.5" />
+                            {session.milestones.length + ' MS'}
+                          </span>
+                        )}
                       </button>
                       <div className="flex items-center gap-1">
                         <Button
@@ -513,43 +626,51 @@ function DaySessionList({
                   )}
                 </div>
 
-                {isExpanded && staff.length > 0 && (
-                  <CardContent className="p-3">
-                    <div
-                      className="grid gap-2"
-                      style={{
-                        gridTemplateColumns:
-                          'repeat(auto-fill, minmax(260px, 1fr))',
-                      }}
-                    >
-                      {staff.map((s) => {
-                        const assignment = getAssignment(session.id, s.id)
-                        return (
-                          <StaffAssignmentCard
-                            key={s.id}
-                            staffMember={s}
-                            session={session}
-                            assignment={assignment}
-                            roles={roles}
-                            onSetRole={(roleId) =>
-                              setAssignment(session.id, s.id, roleId)
-                            }
-                            onAddOverride={(ov) =>
-                              addOverride(session.id, s.id, ov)
-                            }
-                            onUpdateOverride={(ovId, updates) =>
-                              updateOverride(session.id, s.id, ovId, updates)
-                            }
-                            onRemoveOverride={(ovId) =>
-                              removeOverride(session.id, s.id, ovId)
-                            }
-                            onSetNote={(note) =>
-                              setAssignmentNote(session.id, s.id, note)
-                            }
-                          />
-                        )
-                      })}
-                    </div>
+                {isExpanded && (
+                  <CardContent className="p-3 flex flex-col gap-3">
+                    {staff.length > 0 && (
+                      <div
+                        className="grid gap-2"
+                        style={{
+                          gridTemplateColumns:
+                            'repeat(auto-fill, minmax(260px, 1fr))',
+                        }}
+                      >
+                        {staff.map((s) => {
+                          const assignment = getAssignment(session.id, s.id)
+                          return (
+                            <StaffAssignmentCard
+                              key={s.id}
+                              staffMember={s}
+                              session={session}
+                              assignment={assignment}
+                              roles={roles}
+                              onSetRole={(roleId) =>
+                                setAssignment(session.id, s.id, roleId)
+                              }
+                              onAddOverride={(ov) =>
+                                addOverride(session.id, s.id, ov)
+                              }
+                              onUpdateOverride={(ovId, updates) =>
+                                updateOverride(session.id, s.id, ovId, updates)
+                              }
+                              onRemoveOverride={(ovId) =>
+                                removeOverride(session.id, s.id, ovId)
+                              }
+                              onSetNote={(note) =>
+                                setAssignmentNote(session.id, s.id, note)
+                              }
+                            />
+                          )
+                        })}
+                      </div>
+                    )}
+                    <MilestoneSection
+                      session={session}
+                      onAdd={(ms) => addMilestone(session.id, ms)}
+                      onUpdate={(msId, updates) => updateMilestone(session.id, msId, updates)}
+                      onRemove={(msId) => removeMilestone(session.id, msId)}
+                    />
                   </CardContent>
                 )}
               </Card>

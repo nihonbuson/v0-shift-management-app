@@ -26,12 +26,19 @@ export interface Assignment {
   overrides: Override[]
 }
 
+export interface Milestone {
+  id: string
+  offsetMinutes: number // minutes after session start
+  label: string // e.g. "ワークシートA配布"
+}
+
 export interface Session {
   id: string
   dayId: number // 1 or 2
   title: string
   startTime: string // "HH:MM"
   endTime: string // "HH:MM"
+  milestones: Milestone[]
 }
 
 export interface DayConfig {
@@ -73,12 +80,12 @@ export const DEFAULT_SHIFT_DATA: ShiftData = {
   ],
   roles: DEFAULT_ROLES,
   sessions: [
-    { id: 'session-1', dayId: 1, title: '開会式', startTime: '09:00', endTime: '09:30' },
-    { id: 'session-2', dayId: 1, title: 'セッションA', startTime: '09:30', endTime: '10:30' },
-    { id: 'session-3', dayId: 1, title: '休憩', startTime: '10:30', endTime: '10:45' },
-    { id: 'session-4', dayId: 1, title: 'セッションB', startTime: '10:45', endTime: '12:00' },
-    { id: 'session-5', dayId: 2, title: '振り返り', startTime: '09:00', endTime: '10:00' },
-    { id: 'session-6', dayId: 2, title: 'ワークショップC', startTime: '10:00', endTime: '12:00' },
+    { id: 'session-1', dayId: 1, title: '開会式', startTime: '09:00', endTime: '09:30', milestones: [] },
+    { id: 'session-2', dayId: 1, title: 'セッションA', startTime: '09:30', endTime: '10:30', milestones: [] },
+    { id: 'session-3', dayId: 1, title: '休憩', startTime: '10:30', endTime: '10:45', milestones: [] },
+    { id: 'session-4', dayId: 1, title: 'セッションB', startTime: '10:45', endTime: '12:00', milestones: [] },
+    { id: 'session-5', dayId: 2, title: '振り返り', startTime: '09:00', endTime: '10:00', milestones: [] },
+    { id: 'session-6', dayId: 2, title: 'ワークショップC', startTime: '10:00', endTime: '12:00', milestones: [] },
   ],
   assignments: [],
   days: DEFAULT_DAYS,

@@ -121,11 +121,11 @@ function useGridData(
               }
             }
 
-            // Check overrides first (highest priority)
+            // Check overrides first (highest priority) - offset-based
             const overrides = assignment.overrides || []
             for (const ov of overrides) {
-              const ovStart = timeToMinutes(ov.startTime)
-              const ovEnd = timeToMinutes(ov.endTime)
+              const ovStart = start + (ov.startOffsetMinutes ?? 0)
+              const ovEnd = start + (ov.endOffsetMinutes ?? end - start)
               if (slotMin >= ovStart && slotMin < ovEnd) {
                 const role = roleMap.get(ov.roleId)
                 return {

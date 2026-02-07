@@ -11,7 +11,7 @@ import type {
   DayConfig,
   Milestone,
 } from './types'
-import { DEFAULT_SHIFT_DATA, generateId } from './types'
+import { DEFAULT_SHIFT_DATA, generateId, timeToMinutes, minutesToTime, recomputeSessionTimes } from './types'
 
 const STORAGE_KEY = 'shift-manager-data-v2'
 
@@ -20,25 +20,70 @@ function migrateData(raw: Record<string, unknown>): ShiftData {
   // Ensure days array exists (migration from v1)
   if (!data.days || !Array.isArray(data.days)) {
     data.days = [
-      { id: 1, label: 'Day 1' },
-      { id: 2, label: 'Day 2' },
+      { id: 1, label: 'Day 1', dayStartTime: '09:00' },
+      { id: 2, label: 'Day 2', dayStartTime: '09:00' },
     ]
   }
-  // Ensure all sessions have dayId and milestones
+  // Ensure all days have dayStartTime
+  data.days = data.days.map((d: DayConfig) => ({
+    ...d,
+    dayStartTime: d.dayStartTime || '09:00',
+  }))
+
+  // Build session lookup for override migration
+  const sessionMap = new Map<string, Session>()
+
+  // Ensure all sessions have dayId, milestones, and durationMinutes
   if (data.sessions) {
-    data.sessions = data.sessions.map((s: Session) => ({
-      ...s,
-      dayId: s.dayId || 1,
-      milestones: s.milestones || [],
-    }))
+    data.sessions = data.sessions.map((s: Session) => {
+      const duration =
+        s.durationMinutes ||
+        (s.startTime && s.endTime
+          ? timeToMinutes(s.endTime) - timeToMinutes(s.startTime)
+          : 30)
+      const migrated = {
+        ...s,
+        dayId: s.dayId || 1,
+        milestones: s.milestones || [],
+        durationMinutes: duration > 0 ? duration : 30,
+      }
+      sessionMap.set(migrated.id, migrated)
+      return migrated
+    })
   }
-  // Ensure all assignments have overrides
+
+  // Ensure all assignments have overrides and migrate absolute->relative
   if (data.assignments) {
-    data.assignments = data.assignments.map((a: Assignment) => ({
-      ...a,
-      overrides: a.overrides || [],
-    }))
+    data.assignments = data.assignments.map((a: Assignment) => {
+      const session = sessionMap.get(a.sessionId)
+      const sessionStartMin = session ? timeToMinutes(session.startTime) : 0
+      const sessionDuration = session?.durationMinutes || 60
+      return {
+        ...a,
+        overrides: (a.overrides || []).map((ov: Override) => {
+          // If override already has offset fields, keep them
+          if (
+            typeof ov.startOffsetMinutes === 'number' &&
+            typeof ov.endOffsetMinutes === 'number'
+          ) {
+            return ov
+          }
+          // Migrate from absolute startTime/endTime to offsets
+          const ovStartMin = ov.startTime ? timeToMinutes(ov.startTime) : 0
+          const ovEndMin = ov.endTime ? timeToMinutes(ov.endTime) : sessionDuration
+          return {
+            ...ov,
+            startOffsetMinutes: Math.max(0, ovStartMin - sessionStartMin),
+            endOffsetMinutes: Math.min(sessionDuration, ovEndMin - sessionStartMin),
+          }
+        }),
+      }
+    })
   }
+
+  // Recompute session times based on sequential order
+  data.sessions = recomputeSessionTimes(data.sessions, data.days)
+
   return data
 }
 
@@ -81,9 +126,13 @@ export function useShiftStore() {
   }, [])
 
   const updateData = useCallback(
-    (updater: (prev: ShiftData) => ShiftData) => {
+    (updater: (prev: ShiftData) => ShiftData, skipRecompute = false) => {
       setData((prev) => {
-        const next = updater(prev)
+        const raw = updater(prev)
+        // Recompute sequential session times after every mutation
+        const next = skipRecompute
+          ? raw
+          : { ...raw, sessions: recomputeSessionTimes(raw.sessions, raw.days) }
         saveData(next)
         return next
       })
@@ -168,16 +217,59 @@ export function useShiftStore() {
     [updateData]
   )
 
-  // Session operations - now with dayId
+  // Session operations - duration-based sequential
   const addSession = useCallback(
-    (dayId: number, title: string, startTime: string, endTime: string) => {
+    (dayId: number, title: string, durationMinutes: number) => {
       updateData((prev) => ({
         ...prev,
         sessions: [
           ...prev.sessions,
-          { id: generateId(), dayId, title, startTime, endTime, milestones: [] },
+          {
+            id: generateId(),
+            dayId,
+            title,
+            durationMinutes,
+            startTime: '00:00', // will be recomputed
+            endTime: '00:00', // will be recomputed
+            milestones: [],
+          },
         ],
       }))
+    },
+    [updateData]
+  )
+
+  // Reorder session within its day
+  const reorderSession = useCallback(
+    (sessionId: string, direction: 'up' | 'down') => {
+      updateData((prev) => {
+        const session = prev.sessions.find((s) => s.id === sessionId)
+        if (!session) return prev
+
+        // Get indices of sessions in this day (preserving array order)
+        const dayIndices: number[] = []
+        prev.sessions.forEach((s, idx) => {
+          if (s.dayId === session.dayId) dayIndices.push(idx)
+        })
+
+        const posInDay = dayIndices.findIndex(
+          (idx) => prev.sessions[idx].id === sessionId
+        )
+        if (posInDay < 0) return prev
+
+        const swapPos =
+          direction === 'up' ? posInDay - 1 : posInDay + 1
+        if (swapPos < 0 || swapPos >= dayIndices.length) return prev
+
+        const newSessions = [...prev.sessions]
+        const idxA = dayIndices[posInDay]
+        const idxB = dayIndices[swapPos]
+        const temp = newSessions[idxA]
+        newSessions[idxA] = newSessions[idxB]
+        newSessions[idxB] = temp
+
+        return { ...prev, sessions: newSessions }
+      })
     },
     [updateData]
   )
@@ -268,7 +360,7 @@ export function useShiftStore() {
     [data.assignments]
   )
 
-  // Override operations
+  // Override operations (offset-based)
   const addOverride = useCallback(
     (
       sessionId: string,
@@ -288,7 +380,7 @@ export function useShiftStore() {
               }
             : a
         ),
-      }))
+      }), true) // skip recompute - override changes don't affect session times
     },
     [updateData]
   )
@@ -442,6 +534,7 @@ export function useShiftStore() {
     addSession,
     updateSession,
     removeSession,
+    reorderSession,
     setAssignment,
     setAssignmentNote,
     getAssignment,

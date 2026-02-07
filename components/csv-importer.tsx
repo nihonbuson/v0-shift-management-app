@@ -163,12 +163,17 @@ function parseCSV(csvText: string, currentRoles: Role[]): ParsedResult {
           s.endTime === endTime
       )
       if (!session) {
+        const [sh, sm] = a.startTime.split(':').map(Number)
+        const [eh, em] = endTime.split(':').map(Number)
+        const dur = (eh * 60 + em) - (sh * 60 + sm)
         session = {
           id: generateId(),
           dayId: currentDayId,
           title: a.roleName || 'セッション',
+          durationMinutes: dur > 0 ? dur : 5,
           startTime: a.startTime,
           endTime: endTime,
+          milestones: [],
         }
         allSessions.push(session)
         daySessionCount++
@@ -220,7 +225,7 @@ function parseCSV(csvText: string, currentRoles: Role[]): ParsedResult {
     finalizeCurrentDay()
     currentDayId++
     currentDateLabel = dateLabel
-    allDays.push({ id: currentDayId, label: `Day ${currentDayId}`, date: dateLabel })
+    allDays.push({ id: currentDayId, label: `Day ${currentDayId}`, date: dateLabel, dayStartTime: '09:00' })
     activePerStaff = globalStaffNames.map(() => null)
     lastTime = ''
     daySessionCount = 0
@@ -319,12 +324,17 @@ function parseCSV(csvText: string, currentRoles: Role[]): ParsedResult {
                 s.endTime === timeCell
             )
             if (!session) {
+              const [sh2, sm2] = a.startTime.split(':').map(Number)
+              const [eh2, em2] = timeCell.split(':').map(Number)
+              const dur2 = (eh2 * 60 + em2) - (sh2 * 60 + sm2)
               session = {
                 id: generateId(),
                 dayId: currentDayId,
                 title: a.roleName || 'セッション',
+                durationMinutes: dur2 > 0 ? dur2 : 5,
                 startTime: a.startTime,
                 endTime: timeCell,
+                milestones: [],
               }
               allSessions.push(session)
               daySessionCount++
@@ -408,7 +418,7 @@ function parseCSV(csvText: string, currentRoles: Role[]): ParsedResult {
   const finalDays =
     allDays.length > 0
       ? allDays
-      : [{ id: 1, label: 'Day 1' }, { id: 2, label: 'Day 2' }]
+      : [{ id: 1, label: 'Day 1', dayStartTime: '09:00' }, { id: 2, label: 'Day 2', dayStartTime: '09:00' }]
 
   return {
     staff: globalStaff,

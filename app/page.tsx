@@ -142,6 +142,8 @@ export default function Page() {
               onAddSession={store.addSession}
               onUpdateSession={store.updateSession}
               onRemoveSession={store.removeSession}
+              onReorderSession={store.reorderSession}
+              onUpdateDay={store.updateDay}
               getAssignment={store.getAssignment}
               getAssignmentRoleId={store.getAssignmentRoleId}
               setAssignment={store.setAssignment}

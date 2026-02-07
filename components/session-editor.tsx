@@ -11,6 +11,8 @@ import {
   ChevronDown,
   ChevronUp,
   AlertTriangle,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -31,9 +33,11 @@ interface SessionEditorProps {
   staff: StaffMember[]
   roles: Role[]
   days: DayConfig[]
-  onAddSession: (dayId: number, title: string, startTime: string, endTime: string) => void
+  onAddSession: (dayId: number, title: string, durationMinutes: number) => void
   onUpdateSession: (id: string, updates: Partial<Session>) => void
   onRemoveSession: (id: string) => void
+  onReorderSession: (sessionId: string, direction: 'up' | 'down') => void
+  onUpdateDay: (dayId: number, updates: Partial<DayConfig>) => void
   getAssignment: (sessionId: string, staffId: string) => Assignment | null
   getAssignmentRoleId: (sessionId: string, staffId: string) => string
   setAssignment: (sessionId: string, staffId: string, roleId: string) => void
@@ -51,7 +55,7 @@ interface SessionEditorProps {
   removeMilestone: (sessionId: string, milestoneId: string) => void
 }
 
-/* ─── Override row ─── */
+/* ─── Override row (offset-based) ─── */
 function OverrideRow({
   override,
   session,
@@ -66,12 +70,22 @@ function OverrideRow({
   onRemove: (overrideId: string) => void
 }) {
   const role = roles.find((r) => r.id === override.roleId)
-  const startMin = timeToMinutes(override.startTime)
-  const endMin = timeToMinutes(override.endTime)
-  const sessionStartMin = timeToMinutes(session.startTime)
-  const sessionEndMin = timeToMinutes(session.endTime)
+  const durationMin = session.durationMinutes || 60
   const isOutOfRange =
-    startMin < sessionStartMin || endMin > sessionEndMin || startMin >= endMin
+    override.startOffsetMinutes < 0 ||
+    override.endOffsetMinutes > durationMin ||
+    override.startOffsetMinutes >= override.endOffsetMinutes
+
+  // Build 5-min offset options
+  const offsetOptions: number[] = []
+  for (let m = 0; m <= durationMin; m += 5) {
+    offsetOptions.push(m)
+  }
+
+  const formatAbsoluteTime = (offset: number) => {
+    const baseMin = timeToMinutes(session.startTime)
+    return minutesToTime(baseMin + offset)
+  }
 
   return (
     <div
@@ -82,23 +96,41 @@ function OverrideRow({
       {isOutOfRange && (
         <AlertTriangle className="h-3 w-3 text-destructive shrink-0" />
       )}
-      <Input
-        type="time"
-        value={override.startTime}
-        onChange={(e) => onUpdate(override.id, { startTime: e.target.value })}
-        className="h-6 w-24 text-xs px-1"
-        min={session.startTime}
-        max={session.endTime}
-      />
+      <Select
+        value={override.startOffsetMinutes.toString()}
+        onValueChange={(val) =>
+          onUpdate(override.id, { startOffsetMinutes: Number(val) })
+        }
+      >
+        <SelectTrigger className="h-6 w-[110px] text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {offsetOptions.map((offset) => (
+            <SelectItem key={offset} value={offset.toString()}>
+              {'+' + offset + '\u5206 (' + formatAbsoluteTime(offset) + ')'}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       <span className="text-muted-foreground">~</span>
-      <Input
-        type="time"
-        value={override.endTime}
-        onChange={(e) => onUpdate(override.id, { endTime: e.target.value })}
-        className="h-6 w-24 text-xs px-1"
-        min={session.startTime}
-        max={session.endTime}
-      />
+      <Select
+        value={override.endOffsetMinutes.toString()}
+        onValueChange={(val) =>
+          onUpdate(override.id, { endOffsetMinutes: Number(val) })
+        }
+      >
+        <SelectTrigger className="h-6 w-[110px] text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {offsetOptions.map((offset) => (
+            <SelectItem key={offset} value={offset.toString()}>
+              {'+' + offset + '\u5206 (' + formatAbsoluteTime(offset) + ')'}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       <Select
         value={override.roleId}
         onValueChange={(val) => onUpdate(override.id, { roleId: val })}
@@ -131,7 +163,7 @@ function OverrideRow({
       <Input
         value={override.note ?? ''}
         onChange={(e) => onUpdate(override.id, { note: e.target.value })}
-        placeholder="作業内容..."
+        placeholder="\u4F5C\u696D\u5185\u5BB9..."
         className="h-6 w-28 text-xs px-1.5"
       />
       <Button
@@ -177,19 +209,15 @@ function StaffAssignmentCard({
   const hasOverrides = overrides.length > 0
 
   const handleAddOverride = () => {
-    const sessionStartMin = timeToMinutes(session.startTime)
-    const sessionEndMin = timeToMinutes(session.endTime)
-    const midMin = Math.round((sessionStartMin + sessionEndMin) / 2 / 5) * 5
-    const h1 = Math.floor(midMin / 60)
-    const m1 = midMin % 60
-    const startStr = `${h1.toString().padStart(2, '0')}:${m1.toString().padStart(2, '0')}`
+    const durationMin = session.durationMinutes || 60
+    const midOffset = Math.round(durationMin / 2 / 5) * 5
     const lunchRole =
-      roles.find((r) => r.name === '昼食') ||
-      roles.find((r) => r.name === '休憩') ||
+      roles.find((r) => r.name === '\u6627\u98DF') ||
+      roles.find((r) => r.name === '\u4F11\u61A9') ||
       roles[0]
     onAddOverride({
-      startTime: startStr,
-      endTime: session.endTime,
+      startOffsetMinutes: midOffset,
+      endOffsetMinutes: durationMin,
       roleId: lunchRole?.id ?? roles[0]?.id ?? '',
     })
   }
@@ -215,11 +243,11 @@ function StaffAssignmentCard({
           onValueChange={(val) => onSetRole(val === '_none' ? '' : val)}
         >
           <SelectTrigger className="w-28 h-7 text-xs">
-            <SelectValue placeholder="未割当" />
+            <SelectValue placeholder="\u672A\u5272\u5F53" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="_none">
-              <span className="text-muted-foreground">未割当</span>
+              <span className="text-muted-foreground">{'\u672A\u5272\u5F53'}</span>
             </SelectItem>
             {roles.map((r) => (
               <SelectItem key={r.id} value={r.id}>
@@ -239,7 +267,7 @@ function StaffAssignmentCard({
             <Input
               value={assignment?.note ?? ''}
               onChange={(e) => onSetNote(e.target.value)}
-              placeholder="作業内容..."
+              placeholder={'\u4F5C\u696D\u5185\u5BB9...'}
               className="h-7 w-28 text-xs px-1.5"
             />
             <Button
@@ -247,10 +275,10 @@ function StaffAssignmentCard({
               size="sm"
               className="h-6 text-[10px] text-muted-foreground px-1.5"
               onClick={handleAddOverride}
-              title="例外時間を追加"
+              title={'\u4F8B\u5916\u6642\u9593\u3092\u8FFD\u52A0'}
             >
               <Plus className="h-3 w-3 mr-0.5" />
-              例外
+              {'例外'}
             </Button>
           </>
         )}
@@ -259,7 +287,7 @@ function StaffAssignmentCard({
       {hasOverrides && (
         <div className="flex flex-col gap-1.5 pl-2 border-l-2 border-dashed border-muted-foreground/30 ml-1">
           <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
-            個別調整
+            {'個別調整（相対オフセット）'}
           </span>
           {overrides.map((ov) => (
             <OverrideRow
@@ -290,7 +318,7 @@ function MilestoneSection({
   onRemove: (milestoneId: string) => void
 }) {
   const milestones = session.milestones || []
-  const durationMin = timeToMinutes(session.endTime) - timeToMinutes(session.startTime)
+  const durationMin = session.durationMinutes || 60
 
   const handleAdd = () => {
     onAdd({ offsetMinutes: 0, label: '' })
@@ -312,7 +340,7 @@ function MilestoneSection({
       <div className="flex items-center justify-between">
         <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
           <Clock className="h-3 w-3" />
-          マイルストーン（配布タイミング）
+          {'マイルストーン（配布タイミング）'}
         </span>
         <Button
           variant="outline"
@@ -321,13 +349,13 @@ function MilestoneSection({
           onClick={handleAdd}
         >
           <Plus className="h-3 w-3 mr-0.5" />
-          追加
+          {'追加'}
         </Button>
       </div>
 
       {milestones.length === 0 ? (
         <p className="text-[11px] text-muted-foreground">
-          配布物やアクションのタイミングを追加できます。
+          {'配布物やアクションのタイミングを追加できます。'}
         </p>
       ) : (
         <div className="flex flex-col gap-1.5">
@@ -348,7 +376,7 @@ function MilestoneSection({
                 <SelectContent>
                   {offsetOptions.map((offset) => (
                     <SelectItem key={offset} value={offset.toString()}>
-                      {'+' + offset + '分 (' + formatAbsoluteTime(offset) + ')'}
+                      {'+' + offset + '\u5206 (' + formatAbsoluteTime(offset) + ')'}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -356,7 +384,7 @@ function MilestoneSection({
               <Input
                 value={ms.label}
                 onChange={(e) => onUpdate(ms.id, { label: e.target.value })}
-                placeholder="ワークシートA配布..."
+                placeholder={'\u30EF\u30FC\u30AF\u30B7\u30FC\u30C8A\u914D\u5E03...'}
                 className="h-6 flex-1 text-xs px-1.5"
               />
               <span className="text-[10px] text-muted-foreground whitespace-nowrap">
@@ -384,9 +412,12 @@ function DaySessionList({
   sessions,
   staff,
   roles,
+  days,
   onAddSession,
   onUpdateSession,
   onRemoveSession,
+  onReorderSession,
+  onUpdateDay,
   getAssignment,
   getAssignmentRoleId,
   setAssignment,
@@ -399,40 +430,42 @@ function DaySessionList({
   removeMilestone,
 }: {
   dayId: number
+  days: DayConfig[]
 } & Omit<SessionEditorProps, 'days'>) {
   const [newTitle, setNewTitle] = useState('')
-  const [newStart, setNewStart] = useState('09:00')
-  const [newEnd, setNewEnd] = useState('10:00')
+  const [newDuration, setNewDuration] = useState('60')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState('')
-  const [editStart, setEditStart] = useState('')
-  const [editEnd, setEditEnd] = useState('')
+  const [editDuration, setEditDuration] = useState('')
   const [expandedSession, setExpandedSession] = useState<string | null>(null)
 
-  const daySessions = sessions
-    .filter((s) => s.dayId === dayId)
-    .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
+  const day = days.find((d) => d.id === dayId)
+  const dayStartTime = day?.dayStartTime || '09:00'
+
+  // Sessions in array order (not sorted by time - array order IS the truth)
+  const daySessions = sessions.filter((s) => s.dayId === dayId)
 
   const handleAdd = () => {
     if (newTitle.trim()) {
-      onAddSession(dayId, newTitle.trim(), newStart, newEnd)
+      const duration = Number.parseInt(newDuration, 10) || 60
+      onAddSession(dayId, newTitle.trim(), duration)
       setNewTitle('')
+      setNewDuration('60')
     }
   }
 
   const handleStartEdit = (s: Session) => {
     setEditingId(s.id)
     setEditTitle(s.title)
-    setEditStart(s.startTime)
-    setEditEnd(s.endTime)
+    setEditDuration(s.durationMinutes.toString())
   }
 
   const handleSaveEdit = () => {
     if (editingId && editTitle.trim()) {
+      const duration = Number.parseInt(editDuration, 10) || 30
       onUpdateSession(editingId, {
         title: editTitle.trim(),
-        startTime: editStart,
-        endTime: editEnd,
+        durationMinutes: duration > 0 ? duration : 5,
       })
     }
     setEditingId(null)
@@ -446,16 +479,52 @@ function DaySessionList({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Day Start Time */}
+      <Card>
+        <CardContent className="pt-4">
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-foreground">
+                {'Day 開始時刻'}
+              </label>
+              <p className="text-[11px] text-muted-foreground leading-tight">
+                {'この日の最初のセッション開始時刻。後続は自動計算されます。'}
+              </p>
+              <Input
+                type="time"
+                value={dayStartTime}
+                onChange={(e) =>
+                  onUpdateDay(dayId, { dayStartTime: e.target.value })
+                }
+                className="w-32"
+              />
+            </div>
+            <div className="flex-1" />
+            {/* Computed timeline summary */}
+            {daySessions.length > 0 && (
+              <div className="text-xs text-muted-foreground">
+                {daySessions[0].startTime +
+                  ' ~ ' +
+                  daySessions[daySessions.length - 1].endTime +
+                  ' (' +
+                  daySessions.length +
+                  '\u30BB\u30C3\u30B7\u30E7\u30F3)'}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Add Session Form */}
       <Card>
         <CardContent className="pt-4">
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1.5 flex-1 min-w-[180px]">
               <label className="text-xs font-medium text-muted-foreground">
-                タイトル
+                {'タイトル'}
               </label>
               <Input
-                placeholder="セッション名..."
+                placeholder={'セッション名 / 休憩...'}
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
@@ -463,29 +532,21 @@ function DaySessionList({
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-muted-foreground">
-                開始
+                {'所要時間（分）'}
               </label>
               <Input
-                type="time"
-                value={newStart}
-                onChange={(e) => setNewStart(e.target.value)}
-                className="w-28"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
-                終了
-              </label>
-              <Input
-                type="time"
-                value={newEnd}
-                onChange={(e) => setNewEnd(e.target.value)}
-                className="w-28"
+                type="number"
+                min={5}
+                step={5}
+                value={newDuration}
+                onChange={(e) => setNewDuration(e.target.value)}
+                className="w-24"
+                placeholder="60"
               />
             </div>
             <Button onClick={handleAdd} disabled={!newTitle.trim()} size="sm">
               <Plus className="h-4 w-4 mr-1" />
-              追加
+              {'追加'}
             </Button>
           </div>
         </CardContent>
@@ -494,15 +555,15 @@ function DaySessionList({
       {/* Session List */}
       {daySessions.length === 0 ? (
         <div className="text-center py-8 text-sm text-muted-foreground">
-          セッションが登録されていません。
+          {'セッションが登録されていません。'}
         </div>
       ) : (
         <div className="flex flex-col gap-2">
-          {daySessions.map((session) => {
+          {daySessions.map((session, idx) => {
             const isEditing = editingId === session.id
             const isExpanded = expandedSession === session.id
-            const durationMin =
-              timeToMinutes(session.endTime) - timeToMinutes(session.startTime)
+            const isFirst = idx === 0
+            const isLast = idx === daySessions.length - 1
 
             const totalOverrides = staff.reduce((count, s) => {
               const a = getAssignment(session.id, s.id)
@@ -521,19 +582,17 @@ function DaySessionList({
                         className="h-8 flex-1 min-w-[150px]"
                         autoFocus
                       />
-                      <Input
-                        type="time"
-                        value={editStart}
-                        onChange={(e) => setEditStart(e.target.value)}
-                        className="h-8 w-28"
-                      />
-                      <span className="text-muted-foreground text-sm">~</span>
-                      <Input
-                        type="time"
-                        value={editEnd}
-                        onChange={(e) => setEditEnd(e.target.value)}
-                        className="h-8 w-28"
-                      />
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          type="number"
+                          min={5}
+                          step={5}
+                          value={editDuration}
+                          onChange={(e) => setEditDuration(e.target.value)}
+                          className="h-8 w-20"
+                        />
+                        <span className="text-xs text-muted-foreground">{'分'}</span>
+                      </div>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -553,6 +612,34 @@ function DaySessionList({
                     </div>
                   ) : (
                     <>
+                      {/* Reorder buttons */}
+                      <div className="flex flex-col gap-0.5 mr-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-4 w-4 text-muted-foreground hover:text-foreground"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onReorderSession(session.id, 'up')
+                          }}
+                          disabled={isFirst}
+                        >
+                          <ArrowUp className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-4 w-4 text-muted-foreground hover:text-foreground"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onReorderSession(session.id, 'down')
+                          }}
+                          disabled={isLast}
+                        >
+                          <ArrowDown className="h-3 w-3" />
+                        </Button>
+                      </div>
+
                       <button
                         type="button"
                         className="flex items-center gap-3 flex-1 text-left hover:opacity-80 transition-opacity"
@@ -568,12 +655,15 @@ function DaySessionList({
                             {session.title}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <Clock className="h-3.5 w-3.5" />
-                          <span>
+                        {/* Computed times - read only */}
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span className="text-muted-foreground/60 font-mono">
                             {session.startTime + ' ~ ' + session.endTime}
                           </span>
-                          <span>{'(' + durationMin + '分)'}</span>
+                          <span className="text-foreground font-semibold">
+                            {'(' + session.durationMinutes + '\u5206)'}
+                          </span>
                         </div>
                         {/* Assignment badges */}
                         <div className="flex items-center gap-1 ml-2">
@@ -594,7 +684,7 @@ function DaySessionList({
                         {totalOverrides > 0 && (
                           <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-medium ml-1">
                             <AlertTriangle className="h-2.5 w-2.5" />
-                            {totalOverrides + '件'}
+                            {totalOverrides + '\u4EF6'}
                           </span>
                         )}
                         {(session.milestones?.length ?? 0) > 0 && (
@@ -691,9 +781,9 @@ export function SessionEditor(props: SessionEditorProps) {
     <div className="flex flex-col gap-4">
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">セッション管理</CardTitle>
+          <CardTitle className="text-base">{'セッション管理'}</CardTitle>
           <CardDescription>
-            各日のセッションを管理し、スタッフのアサインと個別調整を行います
+            {'セッションは数珠つなぎで自動計算されます。所要時間の変更や並び替えで、後続の時刻が連動して更新されます。'}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -708,7 +798,7 @@ export function SessionEditor(props: SessionEditorProps) {
         </TabsList>
         {days.map((d) => (
           <TabsContent key={d.id} value={d.id.toString()}>
-            <DaySessionList dayId={d.id} {...props} />
+            <DaySessionList dayId={d.id} days={days} {...props} />
           </TabsContent>
         ))}
       </Tabs>

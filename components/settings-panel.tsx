@@ -166,13 +166,24 @@ export function SettingsPanel({
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-muted-foreground">
-                    日付（任意）
+                    {'日付（任意）'}
                   </label>
                   <Input
                     value={d.date ?? ''}
                     onChange={(e) => onUpdateDay(d.id, { date: e.target.value })}
                     className="w-40"
                     placeholder="2025-07-01"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-muted-foreground">
+                    {'開始時刻'}
+                  </label>
+                  <Input
+                    type="time"
+                    value={d.dayStartTime ?? '09:00'}
+                    onChange={(e) => onUpdateDay(d.id, { dayStartTime: e.target.value })}
+                    className="w-32"
                   />
                 </div>
               </div>
@@ -216,7 +227,7 @@ export function SettingsPanel({
                   {staff.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={2} className="text-center text-muted-foreground py-8 text-sm">
-                        スタッフが登録されていません
+                        スタッフが登録さ���ていません
                       </TableCell>
                     </TableRow>
                   )}

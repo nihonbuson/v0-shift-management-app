@@ -292,12 +292,13 @@ function DayGridTable({
                     const hasRole = info.roleId && info.roleColor
 
                     // Collect all milestones across the merged row span
-                    const spanMilestones: ResolvedMilestone[] = []
+                    // with their relative position (row offset within the span)
+                    const spanMilestones: { ms: ResolvedMilestone; rowOffset: number }[] = []
                     for (let r = rowIdx; r < rowIdx + rowSpan && r < gridData.length; r++) {
                       const cellData = gridData[r]?.[colIdx]
                       if (cellData?.milestones) {
                         for (const ms of cellData.milestones) {
-                          spanMilestones.push(ms)
+                          spanMilestones.push({ ms, rowOffset: r - rowIdx })
                         }
                       }
                     }
@@ -306,7 +307,7 @@ function DayGridTable({
                       <td
                         key={s.id}
                         rowSpan={rowSpan}
-                        className={`border border-border text-center relative ${
+                        className={`border border-border text-center relative overflow-hidden ${
                           !hasRole && info.sessionId
                             ? 'bg-muted/30'
                             : !hasRole
@@ -323,6 +324,7 @@ function DayGridTable({
                             : { height: `${rowSpan * 16}px` }
                         }
                       >
+                        {/* Role / note content - centered */}
                         {hasRole && rowSpan >= 3 ? (
                           <div className="flex flex-col items-center justify-center h-full leading-tight px-0.5 overflow-hidden">
                             <span className="font-semibold text-[10px] truncate max-w-full">
@@ -346,22 +348,32 @@ function DayGridTable({
                           </div>
                         ) : null}
 
-                        {/* Milestone indicators */}
-                        {spanMilestones.length > 0 && (
-                          <div className="absolute top-0 right-0 flex flex-col gap-px p-px milestone-indicators">
-                            {spanMilestones.map((ms, msIdx) => (
+                        {/* Milestone indicators - positioned at actual time row */}
+                        {spanMilestones.map(({ ms, rowOffset }, msIdx) => {
+                          const topPercent = (rowOffset / rowSpan) * 100
+                          return (
+                            <div
+                              key={ms.time + '-' + msIdx}
+                              className="absolute left-0 right-0 flex justify-end pr-px pointer-events-none"
+                              style={{ top: `${topPercent}%` }}
+                            >
                               <span
-                                key={ms.time + '-' + msIdx}
-                                className="inline-flex items-center gap-0.5 px-1 py-px rounded-sm text-[7px] font-bold leading-none bg-card/90 text-foreground shadow-sm border border-border/50 whitespace-nowrap cursor-default milestone-badge"
+                                className="milestone-badge pointer-events-auto inline-flex items-center gap-0.5 px-1 py-px rounded-sm text-[7px] font-bold leading-none whitespace-nowrap cursor-default shadow-sm border"
+                                style={{
+                                  backgroundColor: 'rgba(255,255,255,0.92)',
+                                  color: '#1a1a1a',
+                                  borderColor: 'rgba(0,0,0,0.2)',
+                                }}
                                 title={ms.time + ' ' + ms.label}
                               >
-                                <FileText className="h-2 w-2 shrink-0" />
-                                <span className="hidden milestone-print-text">{ms.time + ' ' + ms.label}</span>
-                                <span className="milestone-screen-text truncate max-w-[52px]">{ms.label}</span>
+                                <FileText className="h-2 w-2 shrink-0 text-primary" />
+                                <span className="milestone-time font-mono">{ms.time}</span>
+                                <span className="milestone-screen-label truncate max-w-[44px]">{ms.label}</span>
+                                <span className="hidden milestone-print-label">{ms.label}</span>
                               </span>
-                            ))}
-                          </div>
-                        )}
+                            </div>
+                          )
+                        })}
                       </td>
                     )
                   })}

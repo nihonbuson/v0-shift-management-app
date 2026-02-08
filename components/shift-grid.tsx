@@ -469,24 +469,44 @@ function DayGridTable({
                         }
                         title={cellTooltip || undefined}
                       >
-                        {/* 
-                          Strict display rule:
-                          - note exists → show note only
-                          - note empty  → show nothing (background color still visible)
+                        {/*
+                          Display rule:
+                          - note exists  → show note
+                          - note empty   → show role name
+                          - neither      → empty (background color still visible)
                         */}
-                        {info.note && rowSpan >= 2 ? (
-                          <div className="flex items-center justify-center h-full leading-tight px-0.5 overflow-hidden">
-                            <span className="text-[10px] font-medium truncate max-w-full shift-grid-note">
-                              {info.note}
-                            </span>
-                          </div>
-                        ) : info.note && rowSpan >= 1 ? (
-                          <div className="flex items-center justify-center h-full overflow-hidden">
-                            <span className="text-[8px] font-medium truncate max-w-full px-0.5 leading-none">
-                              {info.note}
-                            </span>
-                          </div>
-                        ) : null}
+                        {(() => {
+                          const displayText = info.note || info.roleName
+                          if (!displayText) return null
+                          if (rowSpan >= 3) {
+                            return (
+                              <div className="flex flex-col items-center justify-center h-full leading-tight px-0.5 overflow-hidden">
+                                <span className="text-[10px] font-semibold truncate max-w-full shift-grid-note">
+                                  {displayText}
+                                </span>
+                              </div>
+                            )
+                          }
+                          if (rowSpan >= 2) {
+                            return (
+                              <div className="flex items-center justify-center h-full overflow-hidden">
+                                <span className="text-[9px] font-semibold truncate max-w-full px-0.5 shift-grid-note">
+                                  {displayText}
+                                </span>
+                              </div>
+                            )
+                          }
+                          // rowSpan 1 - very short, abbreviate
+                          return (
+                            <div className="flex items-center justify-center h-full overflow-hidden">
+                              <span className="text-[8px] font-medium truncate max-w-full px-0.5 leading-none">
+                                {displayText.length > 4
+                                  ? displayText.slice(0, 4) + '..'
+                                  : displayText}
+                              </span>
+                            </div>
+                          )
+                        })()}
 
                         {/* Milestone indicators - positioned at actual time row */}
                         {spanMilestones.map(({ ms, rowOffset }, msIdx) => {

@@ -49,12 +49,20 @@ interface CellInfo {
   isOverride: boolean
   isGlobalOverride: boolean
   note: string
-  milestones: ResolvedMilestone[] // milestones that land on this 5-min slot
+  milestones: ResolvedMilestone[]
 }
 
 interface MergedCell {
   rowSpan: number
   info: CellInfo
+  isFirst: boolean
+}
+
+/** Session column merge info */
+interface SessionColCell {
+  sessionId: string | null
+  title: string
+  rowSpan: number
   isFirst: boolean
 }
 
@@ -71,6 +79,9 @@ const EMPTY_CELL: CellInfo = {
   milestones: [],
 }
 
+/* ========================================================================== */
+/*  useGridData - compute staff cell data for every 5-min slot                */
+/* ========================================================================== */
 function useGridData(
   timeSlots: string[],
   staff: StaffMember[],
@@ -83,7 +94,7 @@ function useGridData(
     const roleMap = new Map(roles.map((r) => [r.id, r]))
     const assignMap = new Map<string, Assignment>()
 
-    // Build a lookup for global staff overrides: staffId -> sorted list of overrides
+    // Build a lookup for global staff overrides
     const globalOvMap = new Map<string, { startMin: number; endMin: number; ov: StaffOverride }[]>()
     for (const so of staffOverrides) {
       const list = globalOvMap.get(so.staffId) || []
@@ -98,7 +109,7 @@ function useGridData(
       assignMap.set(`${a.sessionId}::${a.staffId}`, a)
     }
 
-    // Pre-compute milestone absolute times per session, keyed by slot time
+    // Pre-compute milestone absolute times per session
     const sessionMilestoneMap = new Map<string, Map<string, ResolvedMilestone[]>>()
     for (const session of sessions) {
       const milestones = session.milestones || []
@@ -108,19 +119,12 @@ function useGridData(
       for (const ms of milestones) {
         if (!ms.label) continue
         const absMin = baseMin + ms.offsetMinutes
-        // Snap to 5-min slot
         const snapped = Math.floor(absMin / 5) * 5
         const slotKey = minutesToTime(snapped)
-        const resolved: ResolvedMilestone = {
-          time: minutesToTime(absMin),
-          label: ms.label,
-        }
+        const resolved: ResolvedMilestone = { time: minutesToTime(absMin), label: ms.label }
         const existing = slotMap.get(slotKey)
-        if (existing) {
-          existing.push(resolved)
-        } else {
-          slotMap.set(slotKey, [resolved])
-        }
+        if (existing) existing.push(resolved)
+        else slotMap.set(slotKey, [resolved])
       }
       sessionMilestoneMap.set(session.id, slotMap)
     }
@@ -132,13 +136,12 @@ function useGridData(
     const grid: CellInfo[][] = timeSlots.map((slot) => {
       const slotMin = timeToMinutes(slot)
       return staff.map((s) => {
-        // Priority 1: Global staff overrides (highest priority)
+        // Priority 1: Global staff overrides
         const globalOvs = globalOvMap.get(s.id)
         if (globalOvs) {
           for (const { startMin, endMin, ov } of globalOvs) {
             if (slotMin >= startMin && slotMin < endMin) {
               const role = roleMap.get(ov.roleId)
-              // Find which session this slot belongs to (for milestones)
               let slotMilestones: ResolvedMilestone[] = []
               for (const session of sortedSessions) {
                 const sStart = timeToMinutes(session.startTime)
@@ -149,22 +152,16 @@ function useGridData(
                 }
               }
               return {
-                sessionId: null,
-                roleId: ov.roleId,
-                roleName: role?.name ?? '',
-                roleColor: role?.color ?? '',
-                roleTextColor: role?.textColor ?? '',
-                sessionTitle: '',
-                isOverride: true,
-                isGlobalOverride: true,
-                note: ov.note ?? '',
-                milestones: slotMilestones,
+                sessionId: null, roleId: ov.roleId,
+                roleName: role?.name ?? '', roleColor: role?.color ?? '', roleTextColor: role?.textColor ?? '',
+                sessionTitle: '', isOverride: true, isGlobalOverride: true,
+                note: ov.note ?? '', milestones: slotMilestones,
               }
             }
           }
         }
 
-        // Priority 2+3: Session overrides and session assignments
+        // Priority 2+3: Session overrides and assignments
         for (const session of sortedSessions) {
           const start = timeToMinutes(session.startTime)
           const end = timeToMinutes(session.endTime)
@@ -172,20 +169,13 @@ function useGridData(
             const assignment = assignMap.get(`${session.id}::${s.id}`)
             if (!assignment) {
               return {
-                sessionId: session.id,
-                roleId: null,
-                roleName: '',
-                roleColor: '',
-                roleTextColor: '',
-                sessionTitle: session.title,
-                isOverride: false,
-                isGlobalOverride: false,
-                note: '',
-                milestones: sessionMilestoneMap.get(session.id)?.get(slot) ?? [],
+                sessionId: session.id, roleId: null, roleName: '', roleColor: '', roleTextColor: '',
+                sessionTitle: session.title, isOverride: false, isGlobalOverride: false,
+                note: '', milestones: sessionMilestoneMap.get(session.id)?.get(slot) ?? [],
               }
             }
 
-            // Check overrides first (highest priority) - offset-based
+            // Session-level overrides (offset-based)
             const overrides = assignment.overrides || []
             for (const ov of overrides) {
               const ovStart = start + (ov.startOffsetMinutes ?? 0)
@@ -193,35 +183,21 @@ function useGridData(
               if (slotMin >= ovStart && slotMin < ovEnd) {
                 const role = roleMap.get(ov.roleId)
                 return {
-                  sessionId: session.id,
-                  roleId: ov.roleId,
-                  roleName: role?.name ?? '',
-                  roleColor: role?.color ?? '',
-                  roleTextColor: role?.textColor ?? '',
-                  sessionTitle: session.title,
-                  isOverride: true,
-                  isGlobalOverride: false,
-                  note: ov.note ?? '',
-                  milestones: sessionMilestoneMap.get(session.id)?.get(slot) ?? [],
+                  sessionId: session.id, roleId: ov.roleId,
+                  roleName: role?.name ?? '', roleColor: role?.color ?? '', roleTextColor: role?.textColor ?? '',
+                  sessionTitle: session.title, isOverride: true, isGlobalOverride: false,
+                  note: ov.note ?? '', milestones: sessionMilestoneMap.get(session.id)?.get(slot) ?? [],
                 }
               }
             }
 
             // Default role
-            const role = assignment.roleId
-              ? roleMap.get(assignment.roleId)
-              : null
+            const role = assignment.roleId ? roleMap.get(assignment.roleId) : null
             return {
-              sessionId: session.id,
-              roleId: assignment.roleId || null,
-              roleName: role?.name ?? '',
-              roleColor: role?.color ?? '',
-              roleTextColor: role?.textColor ?? '',
-              sessionTitle: session.title,
-              isOverride: false,
-              isGlobalOverride: false,
-              note: assignment.note ?? '',
-              milestones: sessionMilestoneMap.get(session.id)?.get(slot) ?? [],
+              sessionId: session.id, roleId: assignment.roleId || null,
+              roleName: role?.name ?? '', roleColor: role?.color ?? '', roleTextColor: role?.textColor ?? '',
+              sessionTitle: session.title, isOverride: false, isGlobalOverride: false,
+              note: assignment.note ?? '', milestones: sessionMilestoneMap.get(session.id)?.get(slot) ?? [],
             }
           }
         }
@@ -232,7 +208,7 @@ function useGridData(
     return grid
   }, [timeSlots, staff, sessions, assignments, roles, staffOverrides])
 
-  // Merge cells with rowspan
+  // Merge consecutive identical cells vertically per column
   const mergedGrid = useMemo(() => {
     const result: MergedCell[][] = timeSlots.map(() =>
       staff.map(() => ({ rowSpan: 1, info: EMPTY_CELL, isFirst: true }))
@@ -245,8 +221,7 @@ function useGridData(
         const curr = row < timeSlots.length ? gridData[row]?.[col] : null
 
         const sameGroup =
-          curr &&
-          prev &&
+          curr && prev &&
           curr.sessionId === prev.sessionId &&
           curr.roleId === prev.roleId &&
           curr.isOverride === prev.isOverride &&
@@ -256,17 +231,9 @@ function useGridData(
         if (!sameGroup || row === timeSlots.length) {
           const spanLength = row - spanStart
           if (spanLength > 0 && gridData[spanStart]) {
-            result[spanStart][col] = {
-              rowSpan: spanLength,
-              info: gridData[spanStart][col],
-              isFirst: true,
-            }
+            result[spanStart][col] = { rowSpan: spanLength, info: gridData[spanStart][col], isFirst: true }
             for (let r = spanStart + 1; r < row; r++) {
-              result[r][col] = {
-                rowSpan: 0,
-                info: gridData[r][col],
-                isFirst: false,
-              }
+              result[r][col] = { rowSpan: 0, info: gridData[r][col], isFirst: false }
             }
           }
           spanStart = row
@@ -280,11 +247,65 @@ function useGridData(
   return { gridData, mergedGrid }
 }
 
-/* ─── Single day grid table ─── */
+/* ========================================================================== */
+/*  useSessionColumn - compute session-name column with rowspan merging       */
+/* ========================================================================== */
+function useSessionColumn(timeSlots: string[], sessions: Session[]) {
+  return useMemo(() => {
+    const sorted = [...sessions].sort(
+      (a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime)
+    )
+
+    // Map each slot to a session (or null)
+    const slotSession: (Session | null)[] = timeSlots.map((slot) => {
+      const slotMin = timeToMinutes(slot)
+      for (const s of sorted) {
+        const start = timeToMinutes(s.startTime)
+        const end = timeToMinutes(s.endTime)
+        if (slotMin >= start && slotMin < end) return s
+      }
+      return null
+    })
+
+    // Merge consecutive identical sessions
+    const result: SessionColCell[] = timeSlots.map(() => ({
+      sessionId: null, title: '', rowSpan: 1, isFirst: true,
+    }))
+
+    let spanStart = 0
+    for (let row = 1; row <= timeSlots.length; row++) {
+      const prev = slotSession[row - 1]
+      const curr = row < timeSlots.length ? slotSession[row] : null
+      const same = curr && prev && curr.id === prev.id
+
+      if (!same || row === timeSlots.length) {
+        const spanLen = row - spanStart
+        const s = slotSession[spanStart]
+        result[spanStart] = {
+          sessionId: s?.id ?? null,
+          title: s?.title ?? '',
+          rowSpan: spanLen,
+          isFirst: true,
+        }
+        for (let r = spanStart + 1; r < row; r++) {
+          result[r] = { sessionId: s?.id ?? null, title: '', rowSpan: 0, isFirst: false }
+        }
+        spanStart = row
+      }
+    }
+
+    return result
+  }, [timeSlots, sessions])
+}
+
+/* ========================================================================== */
+/*  DayGridTable - renders the actual HTML table for one day                  */
+/* ========================================================================== */
 function DayGridTable({
   dayLabel,
   staff,
   roles,
+  sessions,
   timeSlots,
   gridData,
   mergedGrid,
@@ -295,6 +316,7 @@ function DayGridTable({
   dayLabel: string
   staff: StaffMember[]
   roles: Role[]
+  sessions: Session[]
   timeSlots: string[]
   gridData: CellInfo[][]
   mergedGrid: MergedCell[][]
@@ -302,10 +324,16 @@ function DayGridTable({
   gridEndTime: string
   isLast: boolean
 }) {
+  const sessionCol = useSessionColumn(timeSlots, sessions)
+
+  // Compute fixed column widths
+  const TIME_COL_W = 56
+  const SESSION_COL_W = 88
+  const STAFF_COL_W = 120
+  const totalW = TIME_COL_W + SESSION_COL_W + staff.length * STAFF_COL_W
+
   return (
-    <div
-      className={`shift-grid-day ${!isLast ? 'print-page-break' : ''}`}
-    >
+    <div className={`shift-grid-day ${!isLast ? 'print-page-break' : ''}`}>
       {/* Print header */}
       <div className="hidden print-only mb-2">
         <h2 className="text-sm font-bold text-foreground">{dayLabel}</h2>
@@ -315,16 +343,29 @@ function DayGridTable({
       </div>
 
       <div className="shift-grid-container overflow-auto max-h-[70vh]">
-        <table className="shift-grid-table w-full border-collapse text-xs">
+        <table
+          className="shift-grid-table border-collapse text-xs"
+          style={{ tableLayout: 'fixed', width: `${totalW}px`, minWidth: `${totalW}px` }}
+        >
+          <colgroup>
+            <col style={{ width: `${TIME_COL_W}px` }} />
+            <col style={{ width: `${SESSION_COL_W}px` }} />
+            {staff.map((s) => (
+              <col key={s.id} style={{ width: `${STAFF_COL_W}px` }} />
+            ))}
+          </colgroup>
           <thead className="sticky top-0 z-10">
             <tr>
-              <th className="border border-border bg-secondary text-secondary-foreground px-2 py-1.5 text-left font-semibold sticky left-0 z-20 min-w-[56px]">
+              <th className="border border-border bg-secondary text-secondary-foreground px-1 py-1.5 text-left font-semibold sticky left-0 z-20">
                 時刻
+              </th>
+              <th className="border border-border bg-muted text-muted-foreground px-1 py-1.5 text-center font-semibold">
+                セッション
               </th>
               {staff.map((s) => (
                 <th
                   key={s.id}
-                  className="border border-border bg-secondary text-secondary-foreground px-2 py-1.5 text-center font-semibold min-w-[72px]"
+                  className="border border-border bg-secondary text-secondary-foreground px-1 py-1.5 text-center font-semibold truncate"
                 >
                   {s.name}
                 </th>
@@ -337,10 +378,13 @@ function DayGridTable({
               const isHour = minutes % 60 === 0
               const isHalfHour = minutes % 30 === 0
 
+              const sc = sessionCol[rowIdx]
+
               return (
                 <tr key={slot}>
+                  {/* ── Time column ── */}
                   <td
-                    className={`border border-border px-1.5 py-0 text-right font-mono sticky left-0 z-[5] ${
+                    className={`border border-border px-1 py-0 text-right font-mono sticky left-0 z-[5] ${
                       isHour
                         ? 'bg-secondary text-secondary-foreground font-semibold'
                         : isHalfHour
@@ -351,6 +395,32 @@ function DayGridTable({
                   >
                     {isHour || isHalfHour ? slot : ''}
                   </td>
+
+                  {/* ── Session name column ── */}
+                  {sc.isFirst && (
+                    <td
+                      rowSpan={sc.rowSpan}
+                      className={`border border-border px-1 text-center overflow-hidden ${
+                        sc.sessionId
+                          ? 'bg-muted/70 font-semibold text-foreground'
+                          : 'bg-card text-muted-foreground/40'
+                      }`}
+                      style={{ height: `${sc.rowSpan * 16}px` }}
+                      title={sc.title || undefined}
+                    >
+                      {sc.title && sc.rowSpan >= 2 ? (
+                        <div className="flex items-center justify-center h-full overflow-hidden">
+                          <span className="text-[10px] leading-tight break-words line-clamp-3 max-w-full">
+                            {sc.title}
+                          </span>
+                        </div>
+                      ) : sc.title ? (
+                        <span className="text-[8px] truncate">{sc.title}</span>
+                      ) : null}
+                    </td>
+                  )}
+
+                  {/* ── Staff columns ── */}
                   {staff.map((s, colIdx) => {
                     const cell = mergedGrid[rowIdx]?.[colIdx]
                     if (!cell || !cell.isFirst) return null
@@ -358,8 +428,7 @@ function DayGridTable({
                     const { info, rowSpan } = cell
                     const hasRole = info.roleId && info.roleColor
 
-                    // Collect all milestones across the merged row span
-                    // with their relative position (row offset within the span)
+                    // Collect milestones across the merged span
                     const spanMilestones: { ms: ResolvedMilestone; rowOffset: number }[] = []
                     for (let r = rowIdx; r < rowIdx + rowSpan && r < gridData.length; r++) {
                       const cellData = gridData[r]?.[colIdx]
@@ -370,20 +439,17 @@ function DayGridTable({
                       }
                     }
 
-                    // Auto-contrast: use luminance if roleTextColor seems wrong
+                    // Auto-contrast text color
                     const effectiveTextColor =
-                      hasRole && info.roleColor
-                        ? getContrastTextColor(info.roleColor)
-                        : undefined
+                      hasRole && info.roleColor ? getContrastTextColor(info.roleColor) : undefined
 
-                    // Build tooltip for narrow cells or overflow
-                    const tooltipParts: string[] = []
-                    if (info.roleName) tooltipParts.push(info.roleName)
-                    if (info.note) tooltipParts.push(info.note)
-                    if (info.isGlobalOverride) tooltipParts.push('(個別予定)')
-                    else if (info.isOverride) tooltipParts.push('(個別調整)')
-                    else if (info.sessionTitle) tooltipParts.push(info.sessionTitle)
-                    const cellTooltip = tooltipParts.join(' / ')
+                    // Tooltip always shows full info
+                    const tipParts: string[] = []
+                    if (info.roleName) tipParts.push(info.roleName)
+                    if (info.note) tipParts.push(info.note)
+                    if (info.isGlobalOverride) tipParts.push('(個別予定)')
+                    else if (info.isOverride) tipParts.push('(個別調整)')
+                    const cellTooltip = tipParts.join(' / ')
 
                     return (
                       <td
@@ -398,47 +464,26 @@ function DayGridTable({
                         }`}
                         style={
                           hasRole
-                            ? {
-                                backgroundColor: info.roleColor,
-                                color: effectiveTextColor,
-                                height: `${rowSpan * 16}px`,
-                              }
+                            ? { backgroundColor: info.roleColor, color: effectiveTextColor, height: `${rowSpan * 16}px` }
                             : { height: `${rowSpan * 16}px` }
                         }
                         title={cellTooltip || undefined}
                       >
-                        {/* Role / note content - centered, shown once per merged block */}
-                        {hasRole && rowSpan >= 3 ? (
-                          <div className="flex flex-col items-center justify-center h-full leading-tight px-0.5 overflow-hidden">
-                            <span className="font-semibold text-[10px] truncate max-w-full">
-                              {info.roleName}
+                        {/* 
+                          Strict display rule:
+                          - note exists → show note only
+                          - note empty  → show nothing (background color still visible)
+                        */}
+                        {info.note && rowSpan >= 2 ? (
+                          <div className="flex items-center justify-center h-full leading-tight px-0.5 overflow-hidden">
+                            <span className="text-[10px] font-medium truncate max-w-full shift-grid-note">
+                              {info.note}
                             </span>
-                            {info.note && rowSpan >= 4 && (
-                              <span className="text-[9px] opacity-90 font-medium truncate max-w-full shift-grid-note">
-                                {info.note}
-                              </span>
-                            )}
-                            {!info.note && !info.isGlobalOverride && rowSpan >= 6 && (
-                              <span className="text-[9px] opacity-80 truncate max-w-full">
-                                {info.sessionTitle}
-                              </span>
-                            )}
-                            {info.isGlobalOverride && rowSpan >= 4 && !info.note && (
-                              <span className="text-[8px] opacity-60 italic">
-                                {'(個別予定)'}
-                              </span>
-                            )}
-                            {info.isOverride && !info.isGlobalOverride && rowSpan >= 4 && !info.note && (
-                              <span className="text-[8px] opacity-60 italic">
-                                {'(個別調整)'}
-                              </span>
-                            )}
                           </div>
-                        ) : hasRole && rowSpan >= 1 ? (
-                          /* Very short cells - show abbreviated text */
+                        ) : info.note && rowSpan >= 1 ? (
                           <div className="flex items-center justify-center h-full overflow-hidden">
-                            <span className="text-[8px] font-semibold truncate max-w-full px-0.5 leading-none">
-                              {info.roleName.length > 3 ? info.roleName.slice(0, 3) + '..' : info.roleName}
+                            <span className="text-[8px] font-medium truncate max-w-full px-0.5 leading-none">
+                              {info.note}
                             </span>
                           </div>
                         ) : null}
@@ -482,7 +527,9 @@ function DayGridTable({
   )
 }
 
-/* ─── Single day wrapper ─── */
+/* ========================================================================== */
+/*  SingleDayGrid - filters data by day and delegates to DayGridTable         */
+/* ========================================================================== */
 function SingleDayGrid({
   day,
   staff,
@@ -515,12 +562,7 @@ function SingleDayGrid({
   )
 
   const { gridData, mergedGrid } = useGridData(
-    timeSlots,
-    staff,
-    daySessions,
-    dayAssignments,
-    roles,
-    dayStaffOverrides
+    timeSlots, staff, daySessions, dayAssignments, roles, dayStaffOverrides
   )
 
   const dayLabel = day.label + (day.date ? ` (${day.date})` : '')
@@ -530,6 +572,7 @@ function SingleDayGrid({
       dayLabel={dayLabel}
       staff={staff}
       roles={roles}
+      sessions={daySessions}
       timeSlots={timeSlots}
       gridData={gridData}
       mergedGrid={mergedGrid}
@@ -540,7 +583,9 @@ function SingleDayGrid({
   )
 }
 
-/* ─── Main export ─── */
+/* ========================================================================== */
+/*  ShiftGrid - main export                                                   */
+/* ========================================================================== */
 export function ShiftGrid({
   staff,
   roles,
@@ -589,7 +634,7 @@ export function ShiftGrid({
               </div>
             ))}
           </div>
-          <Button variant="outline" size="sm" onClick={handlePrint}>
+          <Button variant="outline" size="sm" onClick={handlePrint} className="bg-transparent">
             <Printer className="h-4 w-4 mr-1" />
             印刷
           </Button>
@@ -613,17 +658,16 @@ export function ShiftGrid({
         {days.map((d) => (
           <TabsContent key={d.id} value={d.id.toString()}>
             <Card className="overflow-hidden">
- <SingleDayGrid
-  day={d}
-  staff={staff}
-  roles={roles}
-  sessions={sessions}
-  assignments={assignments}
-  staffOverrides={staffOverrides}
-  gridStartTime={gridStartTime}
-  gridEndTime={gridEndTime}
-  isLast
-
+              <SingleDayGrid
+                day={d}
+                staff={staff}
+                roles={roles}
+                sessions={sessions}
+                assignments={assignments}
+                staffOverrides={staffOverrides}
+                gridStartTime={gridStartTime}
+                gridEndTime={gridEndTime}
+                isLast
               />
             </Card>
           </TabsContent>
@@ -638,16 +682,16 @@ export function ShiftGrid({
                   {d.date ? ` (${d.date})` : ''}
                 </h3>
                 <Card className="overflow-hidden">
- <SingleDayGrid
-  day={d}
-  staff={staff}
-  roles={roles}
-  sessions={sessions}
-  assignments={assignments}
-  staffOverrides={staffOverrides}
-  gridStartTime={gridStartTime}
-  gridEndTime={gridEndTime}
-  isLast={idx === days.length - 1}
+                  <SingleDayGrid
+                    day={d}
+                    staff={staff}
+                    roles={roles}
+                    sessions={sessions}
+                    assignments={assignments}
+                    staffOverrides={staffOverrides}
+                    gridStartTime={gridStartTime}
+                    gridEndTime={gridEndTime}
+                    isLast={idx === days.length - 1}
                   />
                 </Card>
               </div>

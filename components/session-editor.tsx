@@ -89,7 +89,7 @@ function OverrideRow({
 
   return (
     <div
-      className={`flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs ${
+      className={`flex flex-wrap items-center gap-2 rounded-md border px-2 py-1.5 text-xs ${
         isOutOfRange ? 'border-destructive/50 bg-destructive/5' : 'border-border'
       }`}
     >
@@ -108,7 +108,7 @@ function OverrideRow({
         <SelectContent>
           {offsetOptions.map((offset) => (
             <SelectItem key={offset} value={offset.toString()}>
-              {'+' + offset + '\u5206 (' + formatAbsoluteTime(offset) + ')'}
+              {'+' + offset + '分 (' + formatAbsoluteTime(offset) + ')'}
             </SelectItem>
           ))}
         </SelectContent>
@@ -126,7 +126,7 @@ function OverrideRow({
         <SelectContent>
           {offsetOptions.map((offset) => (
             <SelectItem key={offset} value={offset.toString()}>
-              {'+' + offset + '\u5206 (' + formatAbsoluteTime(offset) + ')'}
+              {'+' + offset + '分 (' + formatAbsoluteTime(offset) + ')'}
             </SelectItem>
           ))}
         </SelectContent>
@@ -163,16 +163,19 @@ function OverrideRow({
       <Input
         value={override.note ?? ''}
         onChange={(e) => onUpdate(override.id, { note: e.target.value })}
-        placeholder="\u4F5C\u696D\u5185\u5BB9..."
+        placeholder="作業内容..."
         className="h-6 w-28 text-xs px-1.5"
       />
       <Button
         variant="ghost"
         size="icon"
-        className="h-5 w-5 shrink-0 text-destructive hover:text-destructive"
-        onClick={() => onRemove(override.id)}
+        className="h-7 w-7 shrink-0 text-destructive hover:text-destructive relative z-10"
+        onClick={(e) => {
+          e.stopPropagation()
+          onRemove(override.id)
+        }}
       >
-        <X className="h-3 w-3" />
+        <X className="h-3.5 w-3.5" />
       </Button>
     </div>
   )
@@ -212,8 +215,8 @@ function StaffAssignmentCard({
     const durationMin = session.durationMinutes || 60
     const midOffset = Math.round(durationMin / 2 / 5) * 5
     const lunchRole =
-      roles.find((r) => r.name === '\u6627\u98DF') ||
-      roles.find((r) => r.name === '\u4F11\u61A9') ||
+      roles.find((r) => r.name === '昼食') ||
+      roles.find((r) => r.name === '休憩') ||
       roles[0]
     onAddOverride({
       startOffsetMinutes: midOffset,
@@ -243,11 +246,11 @@ function StaffAssignmentCard({
           onValueChange={(val) => onSetRole(val === '_none' ? '' : val)}
         >
           <SelectTrigger className="w-28 h-7 text-xs">
-            <SelectValue placeholder="\u672A\u5272\u5F53" />
+            <SelectValue placeholder="未割当" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="_none">
-              <span className="text-muted-foreground">{'\u672A\u5272\u5F53'}</span>
+              <span className="text-muted-foreground">未割当</span>
             </SelectItem>
             {roles.map((r) => (
               <SelectItem key={r.id} value={r.id}>
@@ -267,7 +270,7 @@ function StaffAssignmentCard({
             <Input
               value={assignment?.note ?? ''}
               onChange={(e) => onSetNote(e.target.value)}
-              placeholder={'\u4F5C\u696D\u5185\u5BB9...'}
+              placeholder="作業内容..."
               className="h-7 w-28 text-xs px-1.5"
             />
             <Button
@@ -275,7 +278,7 @@ function StaffAssignmentCard({
               size="sm"
               className="h-6 text-[10px] text-muted-foreground px-1.5"
               onClick={handleAddOverride}
-              title={'\u4F8B\u5916\u6642\u9593\u3092\u8FFD\u52A0'}
+              title="例外時間を追加"
             >
               <Plus className="h-3 w-3 mr-0.5" />
               {'例外'}
@@ -376,15 +379,15 @@ function MilestoneSection({
                 <SelectContent>
                   {offsetOptions.map((offset) => (
                     <SelectItem key={offset} value={offset.toString()}>
-                      {'+' + offset + '\u5206 (' + formatAbsoluteTime(offset) + ')'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Input
-                value={ms.label}
-                onChange={(e) => onUpdate(ms.id, { label: e.target.value })}
-                placeholder={'\u30EF\u30FC\u30AF\u30B7\u30FC\u30C8A\u914D\u5E03...'}
+              {'+' + offset + '分 (' + formatAbsoluteTime(offset) + ')'}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Input
+        value={ms.label}
+        onChange={(e) => onUpdate(ms.id, { label: e.target.value })}
+        placeholder="ワークシートA配布..."
                 className="h-6 flex-1 text-xs px-1.5"
               />
               <span className="text-[10px] text-muted-foreground whitespace-nowrap">
@@ -393,10 +396,13 @@ function MilestoneSection({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-5 w-5 shrink-0 text-destructive hover:text-destructive"
-                onClick={() => onRemove(ms.id)}
+                className="h-7 w-7 shrink-0 text-destructive hover:text-destructive relative z-10"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onRemove(ms.id)
+                }}
               >
-                <X className="h-3 w-3" />
+                <X className="h-3.5 w-3.5" />
               </Button>
             </div>
           ))}
@@ -488,7 +494,7 @@ function DaySessionList({
                 {'Day 開始時刻'}
               </label>
               <p className="text-[11px] text-muted-foreground leading-tight">
-                {'この日の最初のセッション開始時刻。後続は自動計算されます。'}
+                {'この日の最初の��ッション開始時刻。後続は自動計算されます。'}
               </p>
               <Input
                 type="time"
@@ -508,7 +514,7 @@ function DaySessionList({
                   daySessions[daySessions.length - 1].endTime +
                   ' (' +
                   daySessions.length +
-                  '\u30BB\u30C3\u30B7\u30E7\u30F3)'}
+                  'セッション)'}
               </div>
             )}
           </div>
@@ -662,7 +668,7 @@ function DaySessionList({
                             {session.startTime + ' ~ ' + session.endTime}
                           </span>
                           <span className="text-foreground font-semibold">
-                            {'(' + session.durationMinutes + '\u5206)'}
+                            {'(' + session.durationMinutes + '分)'}
                           </span>
                         </div>
                         {/* Assignment badges */}
@@ -684,7 +690,7 @@ function DaySessionList({
                         {totalOverrides > 0 && (
                           <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-medium ml-1">
                             <AlertTriangle className="h-2.5 w-2.5" />
-                            {totalOverrides + '\u4EF6'}
+                            {totalOverrides + '件'}
                           </span>
                         )}
                         {(session.milestones?.length ?? 0) > 0 && (

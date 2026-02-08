@@ -62,7 +62,21 @@
     print-color-adjust: exact !important;
   }
 
-  .no-print {
+  /* ─── Hide ALL interactive/non-print elements ─── */
+  .no-print,
+  button,
+  [role="tablist"],
+  [data-state="closed"],
+  [data-radix-dialog-overlay],
+  [data-radix-dialog-content],
+  header .flex.items-center.gap-2,
+  nav {
+    display: none !important;
+  }
+
+  /* Re-show print button area text but hide the buttons */
+  .shift-grid-day button,
+  .shift-grid-day [role="button"] {
     display: none !important;
   }
 
@@ -118,13 +132,28 @@
     page-break-inside: avoid;
   }
 
-  .print-only {
-    display: block !important;
-  }
-
   /* Remove card borders for cleaner print */
   .shift-grid-day .overflow-hidden {
     border: none !important;
     box-shadow: none !important;
+  }
+
+  /* Hide dialogs, modals, overlays */
+  [role="dialog"],
+  [data-radix-popper-content-wrapper],
+  .fixed,
+  .absolute {
+    display: none !important;
+  }
+
+  /* Keep the grid table visible (it uses relative) */
+  .shift-grid-table,
+  .shift-grid-table * {
+    position: static !important;
+  }
+
+  /* Re-enable sticky headers for visual structure but remove position */
+  .shift-grid-table thead th {
+    position: static !important;
   }
 }

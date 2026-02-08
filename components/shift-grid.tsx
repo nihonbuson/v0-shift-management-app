@@ -8,6 +8,20 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { StaffMember, Role, Session, Assignment, DayConfig, StaffOverride } from '@/lib/types'
 import { timeToMinutes, minutesToTime, generateTimeSlots } from '@/lib/types'
 
+/** Compute relative luminance and return white or black for best contrast */
+function getContrastTextColor(hexColor: string): string {
+  const hex = hexColor.replace('#', '')
+  if (hex.length < 6) return '#000000'
+  const r = parseInt(hex.slice(0, 2), 16) / 255
+  const g = parseInt(hex.slice(2, 4), 16) / 255
+  const b = parseInt(hex.slice(4, 6), 16) / 255
+  const luminance =
+    0.2126 * (r <= 0.03928 ? r / 12.92 : ((r + 0.055) / 1.055) ** 2.4) +
+    0.7152 * (g <= 0.03928 ? g / 12.92 : ((g + 0.055) / 1.055) ** 2.4) +
+    0.0722 * (b <= 0.03928 ? b / 12.92 : ((b + 0.055) / 1.055) ** 2.4)
+  return luminance > 0.4 ? '#1a1a1a' : '#ffffff'
+}
+
 interface ShiftGridProps {
   staff: StaffMember[]
   roles: Role[]
@@ -356,6 +370,21 @@ function DayGridTable({
                       }
                     }
 
+                    // Auto-contrast: use luminance if roleTextColor seems wrong
+                    const effectiveTextColor =
+                      hasRole && info.roleColor
+                        ? getContrastTextColor(info.roleColor)
+                        : undefined
+
+                    // Build tooltip for narrow cells or overflow
+                    const tooltipParts: string[] = []
+                    if (info.roleName) tooltipParts.push(info.roleName)
+                    if (info.note) tooltipParts.push(info.note)
+                    if (info.isGlobalOverride) tooltipParts.push('(個別予定)')
+                    else if (info.isOverride) tooltipParts.push('(個別調整)')
+                    else if (info.sessionTitle) tooltipParts.push(info.sessionTitle)
+                    const cellTooltip = tooltipParts.join(' / ')
+
                     return (
                       <td
                         key={s.id}
@@ -371,13 +400,14 @@ function DayGridTable({
                           hasRole
                             ? {
                                 backgroundColor: info.roleColor,
-                                color: info.roleTextColor,
+                                color: effectiveTextColor,
                                 height: `${rowSpan * 16}px`,
                               }
                             : { height: `${rowSpan * 16}px` }
                         }
+                        title={cellTooltip || undefined}
                       >
-                        {/* Role / note content - centered */}
+                        {/* Role / note content - centered, shown once per merged block */}
                         {hasRole && rowSpan >= 3 ? (
                           <div className="flex flex-col items-center justify-center h-full leading-tight px-0.5 overflow-hidden">
                             <span className="font-semibold text-[10px] truncate max-w-full">
@@ -403,6 +433,13 @@ function DayGridTable({
                                 {'(個別調整)'}
                               </span>
                             )}
+                          </div>
+                        ) : hasRole && rowSpan >= 1 ? (
+                          /* Very short cells - show abbreviated text */
+                          <div className="flex items-center justify-center h-full overflow-hidden">
+                            <span className="text-[8px] font-semibold truncate max-w-full px-0.5 leading-none">
+                              {info.roleName.length > 3 ? info.roleName.slice(0, 3) + '..' : info.roleName}
+                            </span>
                           </div>
                         ) : null}
 

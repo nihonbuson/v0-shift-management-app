@@ -334,10 +334,10 @@ function DayGridTable({
 
   return (
     <div className={`shift-grid-day ${!isLast ? 'print-page-break' : ''}`}>
-      {/* Print header */}
-      <div className="hidden print-only mb-2">
-        <h2 className="text-sm font-bold text-foreground">{dayLabel}</h2>
-        <p className="text-xs text-muted-foreground">
+      {/* Print-only header */}
+      <div className="hidden print-only mb-1" style={{ display: 'none' }}>
+        <h2 className="text-sm font-bold" style={{ color: '#000' }}>{dayLabel}</h2>
+        <p className="text-[9px]" style={{ color: '#555' }}>
           {gridStartTime + ' ~ ' + gridEndTime + ' / 5分刻み'}
         </p>
       </div>

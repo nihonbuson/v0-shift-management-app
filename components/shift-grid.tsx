@@ -5,7 +5,7 @@ import { Printer, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import type { StaffMember, Role, Session, Assignment, DayConfig } from '@/lib/types'
+import type { StaffMember, Role, Session, Assignment, DayConfig, StaffOverride } from '@/lib/types'
 import { timeToMinutes, minutesToTime, generateTimeSlots } from '@/lib/types'
 
 interface ShiftGridProps {
@@ -13,6 +13,7 @@ interface ShiftGridProps {
   roles: Role[]
   sessions: Session[]
   assignments: Assignment[]
+  staffOverrides: StaffOverride[]
   days: DayConfig[]
   gridStartTime: string
   gridEndTime: string
@@ -32,6 +33,7 @@ interface CellInfo {
   roleTextColor: string
   sessionTitle: string
   isOverride: boolean
+  isGlobalOverride: boolean
   note: string
   milestones: ResolvedMilestone[] // milestones that land on this 5-min slot
 }
@@ -50,6 +52,7 @@ const EMPTY_CELL: CellInfo = {
   roleTextColor: '',
   sessionTitle: '',
   isOverride: false,
+  isGlobalOverride: false,
   note: '',
   milestones: [],
 }
@@ -59,11 +62,24 @@ function useGridData(
   staff: StaffMember[],
   sessions: Session[],
   assignments: Assignment[],
-  roles: Role[]
+  roles: Role[],
+  staffOverrides: StaffOverride[]
 ) {
   const gridData = useMemo(() => {
     const roleMap = new Map(roles.map((r) => [r.id, r]))
     const assignMap = new Map<string, Assignment>()
+
+    // Build a lookup for global staff overrides: staffId -> sorted list of overrides
+    const globalOvMap = new Map<string, { startMin: number; endMin: number; ov: StaffOverride }[]>()
+    for (const so of staffOverrides) {
+      const list = globalOvMap.get(so.staffId) || []
+      list.push({
+        startMin: timeToMinutes(so.startTime),
+        endMin: timeToMinutes(so.endTime),
+        ov: so,
+      })
+      globalOvMap.set(so.staffId, list)
+    }
     for (const a of assignments) {
       assignMap.set(`${a.sessionId}::${a.staffId}`, a)
     }
@@ -102,6 +118,39 @@ function useGridData(
     const grid: CellInfo[][] = timeSlots.map((slot) => {
       const slotMin = timeToMinutes(slot)
       return staff.map((s) => {
+        // Priority 1: Global staff overrides (highest priority)
+        const globalOvs = globalOvMap.get(s.id)
+        if (globalOvs) {
+          for (const { startMin, endMin, ov } of globalOvs) {
+            if (slotMin >= startMin && slotMin < endMin) {
+              const role = roleMap.get(ov.roleId)
+              // Find which session this slot belongs to (for milestones)
+              let slotMilestones: ResolvedMilestone[] = []
+              for (const session of sortedSessions) {
+                const sStart = timeToMinutes(session.startTime)
+                const sEnd = timeToMinutes(session.endTime)
+                if (slotMin >= sStart && slotMin < sEnd) {
+                  slotMilestones = sessionMilestoneMap.get(session.id)?.get(slot) ?? []
+                  break
+                }
+              }
+              return {
+                sessionId: null,
+                roleId: ov.roleId,
+                roleName: role?.name ?? '',
+                roleColor: role?.color ?? '',
+                roleTextColor: role?.textColor ?? '',
+                sessionTitle: '',
+                isOverride: true,
+                isGlobalOverride: true,
+                note: ov.note ?? '',
+                milestones: slotMilestones,
+              }
+            }
+          }
+        }
+
+        // Priority 2+3: Session overrides and session assignments
         for (const session of sortedSessions) {
           const start = timeToMinutes(session.startTime)
           const end = timeToMinutes(session.endTime)
@@ -116,6 +165,7 @@ function useGridData(
                 roleTextColor: '',
                 sessionTitle: session.title,
                 isOverride: false,
+                isGlobalOverride: false,
                 note: '',
                 milestones: sessionMilestoneMap.get(session.id)?.get(slot) ?? [],
               }
@@ -136,6 +186,7 @@ function useGridData(
                   roleTextColor: role?.textColor ?? '',
                   sessionTitle: session.title,
                   isOverride: true,
+                  isGlobalOverride: false,
                   note: ov.note ?? '',
                   milestones: sessionMilestoneMap.get(session.id)?.get(slot) ?? [],
                 }
@@ -154,6 +205,7 @@ function useGridData(
               roleTextColor: role?.textColor ?? '',
               sessionTitle: session.title,
               isOverride: false,
+              isGlobalOverride: false,
               note: assignment.note ?? '',
               milestones: sessionMilestoneMap.get(session.id)?.get(slot) ?? [],
             }
@@ -164,7 +216,7 @@ function useGridData(
     })
 
     return grid
-  }, [timeSlots, staff, sessions, assignments, roles])
+  }, [timeSlots, staff, sessions, assignments, roles, staffOverrides])
 
   // Merge cells with rowspan
   const mergedGrid = useMemo(() => {
@@ -184,6 +236,7 @@ function useGridData(
           curr.sessionId === prev.sessionId &&
           curr.roleId === prev.roleId &&
           curr.isOverride === prev.isOverride &&
+          curr.isGlobalOverride === prev.isGlobalOverride &&
           curr.note === prev.note
 
         if (!sameGroup || row === timeSlots.length) {
@@ -335,12 +388,17 @@ function DayGridTable({
                                 {info.note}
                               </span>
                             )}
-                            {!info.note && rowSpan >= 6 && (
+                            {!info.note && !info.isGlobalOverride && rowSpan >= 6 && (
                               <span className="text-[9px] opacity-80 truncate max-w-full">
                                 {info.sessionTitle}
                               </span>
                             )}
-                            {info.isOverride && rowSpan >= 4 && !info.note && (
+                            {info.isGlobalOverride && rowSpan >= 4 && !info.note && (
+                              <span className="text-[8px] opacity-60 italic">
+                                {'(個別予定)'}
+                              </span>
+                            )}
+                            {info.isOverride && !info.isGlobalOverride && rowSpan >= 4 && !info.note && (
                               <span className="text-[8px] opacity-60 italic">
                                 {'(個別調整)'}
                               </span>
@@ -394,6 +452,7 @@ function SingleDayGrid({
   roles,
   sessions,
   assignments,
+  staffOverrides,
   gridStartTime,
   gridEndTime,
   isLast,
@@ -403,6 +462,7 @@ function SingleDayGrid({
   roles: Role[]
   sessions: Session[]
   assignments: Assignment[]
+  staffOverrides: StaffOverride[]
   gridStartTime: string
   gridEndTime: string
   isLast: boolean
@@ -410,6 +470,7 @@ function SingleDayGrid({
   const daySessions = sessions.filter((s) => s.dayId === day.id)
   const daySessionIds = new Set(daySessions.map((s) => s.id))
   const dayAssignments = assignments.filter((a) => daySessionIds.has(a.sessionId))
+  const dayStaffOverrides = staffOverrides.filter((so) => so.dayId === day.id)
 
   const timeSlots = useMemo(
     () => generateTimeSlots(gridStartTime, gridEndTime, 5),
@@ -421,7 +482,8 @@ function SingleDayGrid({
     staff,
     daySessions,
     dayAssignments,
-    roles
+    roles,
+    dayStaffOverrides
   )
 
   const dayLabel = day.label + (day.date ? ` (${day.date})` : '')
@@ -447,6 +509,7 @@ export function ShiftGrid({
   roles,
   sessions,
   assignments,
+  staffOverrides,
   days,
   gridStartTime,
   gridEndTime,
@@ -513,15 +576,17 @@ export function ShiftGrid({
         {days.map((d) => (
           <TabsContent key={d.id} value={d.id.toString()}>
             <Card className="overflow-hidden">
-              <SingleDayGrid
-                day={d}
-                staff={staff}
-                roles={roles}
-                sessions={sessions}
-                assignments={assignments}
-                gridStartTime={gridStartTime}
-                gridEndTime={gridEndTime}
-                isLast
+ <SingleDayGrid
+  day={d}
+  staff={staff}
+  roles={roles}
+  sessions={sessions}
+  assignments={assignments}
+  staffOverrides={staffOverrides}
+  gridStartTime={gridStartTime}
+  gridEndTime={gridEndTime}
+  isLast
+
               />
             </Card>
           </TabsContent>
@@ -536,15 +601,16 @@ export function ShiftGrid({
                   {d.date ? ` (${d.date})` : ''}
                 </h3>
                 <Card className="overflow-hidden">
-                  <SingleDayGrid
-                    day={d}
-                    staff={staff}
-                    roles={roles}
-                    sessions={sessions}
-                    assignments={assignments}
-                    gridStartTime={gridStartTime}
-                    gridEndTime={gridEndTime}
-                    isLast={idx === days.length - 1}
+ <SingleDayGrid
+  day={d}
+  staff={staff}
+  roles={roles}
+  sessions={sessions}
+  assignments={assignments}
+  staffOverrides={staffOverrides}
+  gridStartTime={gridStartTime}
+  gridEndTime={gridEndTime}
+  isLast={idx === days.length - 1}
                   />
                 </Card>
               </div>

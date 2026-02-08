@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Settings, CalendarDays, Grid3x3, FileUp, RotateCcw } from 'lucide-react'
+import { Settings, CalendarDays, Grid3x3, FileUp, RotateCcw, CalendarClock } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import {
@@ -19,10 +19,12 @@ import { SessionEditor } from '@/components/session-editor'
 import { ShiftGrid } from '@/components/shift-grid'
 import { CsvImporter } from '@/components/csv-importer'
 import { ProjectIO } from '@/components/project-io'
+import { StaffOverrideDialog } from '@/components/staff-override-dialog'
 
 export default function Page() {
   const store = useShiftStore()
   const [resetOpen, setResetOpen] = useState(false)
+  const [overrideDialogOpen, setOverrideDialogOpen] = useState(false)
 
   if (!store.isLoaded) {
     return (
@@ -55,6 +57,15 @@ export default function Page() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setOverrideDialogOpen(true)}
+              className="gap-1.5 bg-transparent"
+            >
+              <CalendarClock className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{'個別予定'}</span>
+            </Button>
             <ProjectIO data={store.data} onReplace={store.replaceData} />
             <div className="w-px h-5 bg-border" aria-hidden="true" />
             <Dialog open={resetOpen} onOpenChange={setResetOpen}>
@@ -163,6 +174,7 @@ export default function Page() {
               roles={store.data.roles}
               sessions={store.data.sessions}
               assignments={store.data.assignments}
+              staffOverrides={store.data.staffOverrides}
               days={store.data.days}
               gridStartTime={store.data.gridStartTime}
               gridEndTime={store.data.gridEndTime}
@@ -177,6 +189,21 @@ export default function Page() {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Global Staff Override Dialog */}
+      <StaffOverrideDialog
+        open={overrideDialogOpen}
+        onOpenChange={setOverrideDialogOpen}
+        staff={store.data.staff}
+        roles={store.data.roles}
+        days={store.data.days}
+        staffOverrides={store.data.staffOverrides}
+        gridStartTime={store.data.gridStartTime}
+        gridEndTime={store.data.gridEndTime}
+        onAdd={store.addStaffOverride}
+        onUpdate={store.updateStaffOverride}
+        onRemove={store.removeStaffOverride}
+      />
     </div>
   )
 }

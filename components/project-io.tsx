@@ -59,6 +59,13 @@ function validateProjectData(
   if (!Array.isArray(obj.assignments)) {
     return { valid: false, error: 'assignments フィールドが配列ではありません。' }
   }
+  // staffOverrides is optional for backward compat - default to empty array
+  if (obj.staffOverrides && !Array.isArray(obj.staffOverrides)) {
+    return { valid: false, error: 'staffOverrides フィールドが配列ではありません。' }
+  }
+  if (!obj.staffOverrides) {
+    (obj as Record<string, unknown>).staffOverrides = []
+  }
   if (!Array.isArray(obj.days)) {
     return { valid: false, error: 'days フィールドが配列ではありません。' }
   }
@@ -241,6 +248,8 @@ export function ProjectIO({ data, onReplace }: ProjectIOProps) {
                 <span className="font-medium">{pendingData.sessions.length}件</span>
                 <span className="text-muted-foreground">アサイン</span>
                 <span className="font-medium">{pendingData.assignments.length}件</span>
+                <span className="text-muted-foreground">個別予定</span>
+                <span className="font-medium">{pendingData.staffOverrides?.length ?? 0}件</span>
               </div>
             </div>
           )}

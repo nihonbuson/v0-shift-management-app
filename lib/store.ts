@@ -10,6 +10,7 @@ import type {
   Override,
   DayConfig,
   Milestone,
+  StaffOverride,
 } from './types'
 import { DEFAULT_SHIFT_DATA, generateId, timeToMinutes, minutesToTime, recomputeSessionTimes } from './types'
 
@@ -79,6 +80,11 @@ function migrateData(raw: Record<string, unknown>): ShiftData {
         }),
       }
     })
+  }
+
+  // Ensure staffOverrides array exists
+  if (!data.staffOverrides || !Array.isArray(data.staffOverrides)) {
+    data.staffOverrides = []
   }
 
   // Recompute session times based on sequential order
@@ -167,6 +173,7 @@ export function useShiftStore() {
         ...prev,
         staff: prev.staff.filter((s) => s.id !== id),
         assignments: prev.assignments.filter((a) => a.staffId !== id),
+        staffOverrides: prev.staffOverrides.filter((so) => so.staffId !== id),
       }))
     },
     [updateData]
@@ -485,6 +492,42 @@ export function useShiftStore() {
     [updateData]
   )
 
+  // Staff Override operations (global, absolute-time overrides)
+  const addStaffOverride = useCallback(
+    (override: Omit<StaffOverride, 'id'>) => {
+      updateData((prev) => ({
+        ...prev,
+        staffOverrides: [
+          ...prev.staffOverrides,
+          { ...override, id: generateId() },
+        ],
+      }), true)
+    },
+    [updateData]
+  )
+
+  const updateStaffOverride = useCallback(
+    (id: string, updates: Partial<Omit<StaffOverride, 'id'>>) => {
+      updateData((prev) => ({
+        ...prev,
+        staffOverrides: prev.staffOverrides.map((so) =>
+          so.id === id ? { ...so, ...updates } : so
+        ),
+      }), true)
+    },
+    [updateData]
+  )
+
+  const removeStaffOverride = useCallback(
+    (id: string) => {
+      updateData((prev) => ({
+        ...prev,
+        staffOverrides: prev.staffOverrides.filter((so) => so.id !== id),
+      }), true)
+    },
+    [updateData]
+  )
+
   // Grid time settings
   const setGridTimes = useCallback(
     (startTime: string, endTime: string) => {
@@ -545,6 +588,9 @@ export function useShiftStore() {
     addMilestone,
     updateMilestone,
     removeMilestone,
+    addStaffOverride,
+    updateStaffOverride,
+    removeStaffOverride,
     setGridTimes,
     importData,
     replaceData,

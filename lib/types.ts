@@ -45,6 +45,17 @@ export interface Session {
   milestones: Milestone[]
 }
 
+/** Global staff override - applies to any time slot regardless of session assignment */
+export interface StaffOverride {
+  id: string
+  staffId: string
+  dayId: number
+  startTime: string // "HH:MM" absolute time
+  endTime: string // "HH:MM" absolute time
+  roleId: string
+  note: string
+}
+
 export interface DayConfig {
   id: number // 1 or 2
   label: string // "Day 1", "Day 2", or custom
@@ -57,6 +68,7 @@ export interface ShiftData {
   roles: Role[]
   sessions: Session[]
   assignments: Assignment[]
+  staffOverrides: StaffOverride[]
   days: DayConfig[]
   gridStartTime: string // "HH:MM"
   gridEndTime: string // "HH:MM"
@@ -93,6 +105,7 @@ export const DEFAULT_SHIFT_DATA: ShiftData = {
     { id: 'session-6', dayId: 2, title: 'ワークショップC', durationMinutes: 120, startTime: '10:00', endTime: '12:00', milestones: [] },
   ],
   assignments: [],
+  staffOverrides: [],
   days: DEFAULT_DAYS,
   gridStartTime: '08:00',
   gridEndTime: '18:00',

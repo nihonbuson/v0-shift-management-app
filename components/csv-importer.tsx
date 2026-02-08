@@ -471,6 +471,7 @@ export function CsvImporter({ currentRoles, onImport }: CsvImporterProps) {
       sessions: parseResult.sessions,
       roles: parseResult.roles,
       assignments: parseResult.assignments,
+      staffOverrides: [],
       days: parseResult.days,
     })
     setParseResult(null)
